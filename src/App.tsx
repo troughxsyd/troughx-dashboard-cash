@@ -61,6 +61,7 @@ const STORAGE_KEYS = {
   ROSTER_SUPER: 'trough_x_saved_roster_super_v4',
   ROSTER_TEMPLATES: 'trough_x_roster_templates_v4',
   DIRECT_OVERHEADS: 'trough_x_direct_overheads_v1',
+  FIXED_HIRE_FEE: 'trough_x_fixed_hire_fee_v1',
 };
 
 const DEFAULT_OWNED_OVERHEADS: OwnedDirectOverheads = {
@@ -274,6 +275,7 @@ const EVENTS_DATA: PipelineEvent[] = [
 ];
 
 type TabId = 'dashboard' | 'simulator' | 'wages' | 'promoter' | 'calendar';
+type SimMode = 'owned' | 'promoter' | 'fixed_hire';
 
 function formatMoney(val: number): string {
   return val.toLocaleString('en-US', {
@@ -286,7 +288,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
 
   // Simulator State
-  const [simMode, setSimMode] = useState<'owned' | 'promoter'>('owned');
+  const [simMode, setSimMode] = useState<SimMode>('owned');
   const [simPax, setSimPax] = useState<number>(200);
   const [simTicketPrice, setSimTicketPrice] = useState<number>(30);
   const [simTicketClip, setSimTicketClip] = useState<number>(5.0);
@@ -294,6 +296,28 @@ export default function App() {
   const [simCloakRate, setSimCloakRate] = useState<number>(50);
   const [simCogsRate, setSimCogsRate] = useState<number>(22.0);
   const [simPromoterDeposit, setSimPromoterDeposit] = useState<boolean>(true);
+  const [simFixedHireFee, setSimFixedHireFee] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.FIXED_HIRE_FEE);
+      if (saved !== null) {
+        const parsed = Number(JSON.parse(saved));
+        if (!Number.isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return 5000;
+  });
+
+  const updateFixedHireFee = (val: number) => {
+    const cleanVal = Math.max(0, Number.isNaN(val) ? 0 : val);
+    setSimFixedHireFee(cleanVal);
+    try {
+      localStorage.setItem(STORAGE_KEYS.FIXED_HIRE_FEE, JSON.stringify(cleanVal));
+    } catch {
+      // Ignore
+    }
+  };
 
   // Editable Direct Overheads for Trough-Owned Events (Loaded from localStorage)
   const [ownedOverheads, setOwnedOverheads] = useState<OwnedDirectOverheads>(() => {
@@ -416,6 +440,7 @@ export default function App() {
   });
 
   // Promoter Deal Viability Tester State
+  const [dealMode, setDealMode] = useState<'clip_bar' | 'fixed_hire'>('clip_bar');
   const [dealPax, setDealPax] = useState<number>(220);
   const [dealClip, setDealClip] = useState<number>(5.0);
   const [dealSpend, setDealSpend] = useState<number>(24.0);
@@ -589,20 +614,35 @@ export default function App() {
     setEditingEventIndex(indexInEvents);
     setSimEventDate(item.date);
     setSimEventTitle(item.title);
+    const isFixedHireEvent =
+      item.format.toLowerCase().includes('fixed') ||
+      (item.barGross === 0 && item.clip + item.ticketRev + item.deposit > 0);
     setSimEventFormat(
-      item.format || (item.type === 'promoter' ? 'Promoter Hosted' : 'Owned Hero Night')
+      item.format ||
+        (isFixedHireEvent
+          ? 'Fixed Venue Hire'
+          : item.type === 'promoter'
+          ? 'Promoter Hosted'
+          : 'Owned Hero Night')
     );
-    setSimMode(item.type);
-    setSimPax(Math.min(300, Math.max(50, item.pax)));
+    if (isFixedHireEvent) {
+      setSimMode('fixed_hire');
+      updateFixedHireFee(item.clip + item.ticketRev + item.deposit);
+    } else {
+      setSimMode(item.type);
+    }
+    setSimPax(Math.min(300, Math.max(50, item.pax || 200)));
     const estBarSpend =
-      item.pax > 0 ? Math.round((item.barGross / item.pax) * 2) / 2 : 22.5;
+      item.pax > 0 && item.barGross > 0
+        ? Math.round((item.barGross / item.pax) * 2) / 2
+        : 22.5;
     setSimBarSpend(Math.min(45, Math.max(12, estBarSpend)));
-    if (item.type === 'owned' && item.pax > 0 && item.ticketRev > 0) {
+    if (!isFixedHireEvent && item.type === 'owned' && item.pax > 0 && item.ticketRev > 0) {
       setSimTicketPrice(
         Math.min(60, Math.max(15, Math.round(item.ticketRev / item.pax)))
       );
     }
-    if (item.type === 'promoter' && item.pax > 0 && item.clip >= 0) {
+    if (!isFixedHireEvent && item.type === 'promoter' && item.pax > 0 && item.clip >= 0) {
       setSimTicketClip(Number((item.clip / item.pax).toFixed(2)));
     }
     setSimPromoterDeposit(item.deposit > 0);
@@ -614,7 +654,13 @@ export default function App() {
     setEditingEventIndex(null);
     setSimEventDate('20/03/2027');
     setSimEventTitle('New Trough X Event');
-    setSimEventFormat(simMode === 'promoter' ? 'Promoter Hosted' : 'Owned Hero Night');
+    setSimEventFormat(
+      simMode === 'fixed_hire'
+        ? 'Fixed Venue Hire'
+        : simMode === 'promoter'
+        ? 'Promoter Hosted'
+        : 'Owned Hero Night'
+    );
     setSimSaveNotice(null);
     setActiveTab('simulator');
   };
@@ -622,8 +668,15 @@ export default function App() {
   // Quick toggle button in header
   const toggleSimModeQuick = () => {
     setSimMode((prev) => {
-      const next = prev === 'owned' ? 'promoter' : 'owned';
-      setSimEventFormat(next === 'promoter' ? 'Promoter Hosted' : 'Owned Hero Night');
+      const next: SimMode =
+        prev === 'owned' ? 'promoter' : prev === 'promoter' ? 'fixed_hire' : 'owned';
+      setSimEventFormat(
+        next === 'fixed_hire'
+          ? 'Fixed Venue Hire'
+          : next === 'promoter'
+          ? 'Promoter Hosted'
+          : 'Owned Hero Night'
+      );
       return next;
     });
     setActiveTab('simulator');
@@ -641,6 +694,7 @@ export default function App() {
     setSimCloakRate(50);
     setSimCogsRate(22.0);
     setSimPromoterDeposit(true);
+    updateFixedHireFee(5000);
     setSimMode('owned');
     resetOwnedOverheads();
     setSimSaveNotice(null);
@@ -648,26 +702,44 @@ export default function App() {
 
   // Simulator Calculations
   const simMetrics = useMemo(() => {
+    const isFixedHire = simMode === 'fixed_hire';
     const cloakFraction = simCloakRate / 100;
     const cogsFraction = simCogsRate / 100;
 
+    let fixedHireRevenue = 0;
     let ticketRevenue = 0;
     let depositRevenue = 0;
+    let barRevenue = 0;
+    let cloakRevenue = 0;
 
-    if (simMode === 'owned') {
+    if (isFixedHire) {
+      // Fixed Venue Hire: strictly a flat amount entered that does not scale and has no other influencing revenue factors
+      fixedHireRevenue = simFixedHireFee;
+    } else if (simMode === 'owned') {
       ticketRevenue = simPax * simTicketPrice;
+      barRevenue = simPax * simBarSpend;
+      const cloakItems = Math.round(simPax * cloakFraction);
+      cloakRevenue = cloakItems * 5.0;
     } else {
       ticketRevenue = simPax * simTicketClip;
       depositRevenue = simPromoterDeposit ? 550.0 : 0.0;
+      barRevenue = simPax * simBarSpend;
+      const cloakItems = Math.round(simPax * cloakFraction);
+      cloakRevenue = cloakItems * 5.0;
     }
 
-    const barRevenue = simPax * simBarSpend;
-    const cloakItems = Math.round(simPax * cloakFraction);
-    const cloakRevenue = cloakItems * 5.0;
-    const grossTurnover = ticketRevenue + barRevenue + cloakRevenue + depositRevenue;
+    const grossTurnover = isFixedHire
+      ? fixedHireRevenue
+      : ticketRevenue + barRevenue + cloakRevenue + depositRevenue;
 
-    const beverageCogs = barRevenue * cogsFraction;
-    const consumables = simPax > 220 ? 200.0 : simPax > 150 ? 150.0 : 100.0;
+    const beverageCogs = isFixedHire ? 0 : barRevenue * cogsFraction;
+    const consumables = isFixedHire
+      ? 0
+      : simPax > 220
+      ? 200.0
+      : simPax > 150
+      ? 150.0
+      : 100.0;
     const grossMargin = grossTurnover - beverageCogs - consumables;
 
     let baseRosterWages = 0;
@@ -678,24 +750,30 @@ export default function App() {
     roster.forEach((item) => {
       let count = item.headcount;
       if (item.role.includes('Crowd Control') || item.role.includes('Security')) {
-        if (simPax > 240) count = count + 1;
+        if (!isFixedHire && simPax > 240) count = count + 1;
         guards += count;
       } else if (item.role.includes('Bartender')) {
-        if (simPax > 220) count = count + 1;
+        if (!isFixedHire && simPax > 220) count = count + 1;
         bartenders += count;
       }
       staffCount += count;
       baseRosterWages += count * item.hours * item.rate;
     });
 
-    const feeRate =
-      simMode === 'owned' ? ownedOverheads.merchantFeePct / 100 : 0.015;
+    const feeRate = isFixedHire
+      ? 0
+      : simMode === 'owned'
+      ? ownedOverheads.merchantFeePct / 100
+      : 0.015;
     const talentCost = simMode === 'owned' ? ownedOverheads.talentCost : 0;
-    const productionCost =
-      simMode === 'owned' ? ownedOverheads.productionCost : 150;
+    const productionCost = isFixedHire
+      ? 0
+      : simMode === 'owned'
+      ? ownedOverheads.productionCost
+      : 150;
     const marketingCost = simMode === 'owned' ? ownedOverheads.marketingCost : 0;
     const otherCost = simMode === 'owned' ? ownedOverheads.otherCost : 0;
-    const terminalFees = grossTurnover * feeRate;
+    const terminalFees = isFixedHire ? 0 : grossTurnover * feeRate;
     const fixedDirectOverheads =
       talentCost + productionCost + marketingCost + otherCost;
     const totalOverheads = fixedDirectOverheads + terminalFees;
@@ -705,6 +783,7 @@ export default function App() {
     const marginRatio = grossTurnover > 0 ? (netSurplus / grossTurnover) * 100 : 0;
 
     return {
+      fixedHireRevenue,
       ticketRevenue,
       depositRevenue,
       barRevenue,
@@ -736,6 +815,7 @@ export default function App() {
     simCloakRate,
     simCogsRate,
     simPromoterDeposit,
+    simFixedHireFee,
     simMode,
     roster,
     ownedOverheads,
@@ -821,7 +901,29 @@ export default function App() {
     const cleanTitle = simEventTitle.trim() || 'Untitled Trough X Event';
     const cleanFormat =
       simEventFormat.trim() ||
-      (simMode === 'promoter' ? 'Promoter Hosted' : 'Owned Hero Night');
+      (simMode === 'fixed_hire'
+        ? 'Fixed Venue Hire'
+        : simMode === 'promoter'
+        ? 'Promoter Hosted'
+        : 'Owned Hero Night');
+
+    if (simMode === 'fixed_hire') {
+      return {
+        date: cleanDate,
+        title: cleanTitle,
+        type: 'promoter',
+        format: cleanFormat.toLowerCase().includes('fixed')
+          ? cleanFormat
+          : `Fixed Venue Hire (${cleanFormat})`,
+        pax: simPax,
+        barGross: 0,
+        clip: Math.round(simFixedHireFee),
+        ticketRev: 0,
+        deposit: 0,
+        wages: Math.round(simMetrics.baseRosterWages),
+        surplus: Math.round(simMetrics.netSurplus),
+      };
+    }
 
     return {
       date: cleanDate,
@@ -891,18 +993,22 @@ export default function App() {
 
   // Promoter Deal Tester Calculations
   const dealMetrics = useMemo(() => {
+    const isFixedHire = dealMode === 'fixed_hire';
     const pax = dealPax || 0;
     const clip = dealClip >= 0 ? dealClip : 0;
     const spend = dealSpend || 0;
 
-    const clipTotal = pax * clip;
-    const barTotal = pax * spend;
-    const cloakTotal = pax * 0.5 * 5.0;
-    const grossTurnover = clipTotal + barTotal + cloakTotal;
+    const fixedHireTotal = isFixedHire ? simFixedHireFee : 0;
+    const clipTotal = isFixedHire ? 0 : pax * clip;
+    const barTotal = isFixedHire ? 0 : pax * spend;
+    const cloakTotal = isFixedHire ? 0 : pax * 0.5 * 5.0;
+    const grossTurnover = isFixedHire
+      ? fixedHireTotal
+      : clipTotal + barTotal + cloakTotal;
 
-    const cogs = barTotal * 0.22 + 150.0;
+    const cogs = isFixedHire ? 0 : barTotal * 0.22 + 150.0;
     const wages = rosterSummary.grossWages;
-    const overheads = grossTurnover * 0.015 + 150.0;
+    const overheads = isFixedHire ? 0 : grossTurnover * 0.015 + 150.0;
     const netSurplus = grossTurnover - cogs - wages - overheads;
 
     // Dynamic Breakeven Mathematics per Patron
@@ -918,10 +1024,13 @@ export default function App() {
         : 300;
 
     return {
+      isFixedHire,
+      fixedHireTotal,
       clip,
       clipTotal,
       barTotal,
       cloakTotal,
+      grossTurnover,
       cogs,
       wages,
       fixedOverhead,
@@ -932,7 +1041,7 @@ export default function App() {
       breakevenNoDeposit,
       breakevenWithDeposit,
     };
-  }, [dealPax, dealClip, dealSpend, rosterSummary.grossWages]);
+  }, [dealMode, dealPax, dealClip, dealSpend, simFixedHireFee, rosterSummary.grossWages]);
 
   // Operating Models Performance Matrix (Dynamically Recalculated from Roster & Owned Direct Overheads)
   const performanceMatrix = useMemo(() => {
@@ -961,6 +1070,7 @@ export default function App() {
       name: 'Actuals (11 Sept Historical)',
       dotClass: 'bg-neutral-400',
       pax: 150,
+      paxLabel: '150 Pax',
       gross: 4881.0,
       beverageCogs: 857.0,
       consumables: 0,
@@ -983,6 +1093,7 @@ export default function App() {
       name: 'Conservative Owned Party',
       dotClass: 'bg-blue-400',
       pax: 120,
+      paxLabel: '120 Pax',
       gross: consGross,
       beverageCogs: consBevCogs,
       consumables: consConsumables,
@@ -1006,6 +1117,7 @@ export default function App() {
       name: 'Target Owned Party (Baseline)',
       dotClass: 'bg-trough-yellow',
       pax: 200,
+      paxLabel: '200 Pax',
       gross: targetGross,
       beverageCogs: targetBevCogs,
       consumables: targetConsumables,
@@ -1029,6 +1141,7 @@ export default function App() {
       name: 'Peak Sell-Out Owned Party',
       dotClass: 'bg-purple-400',
       pax: 280,
+      paxLabel: '280 Pax',
       gross: peakGross,
       beverageCogs: peakBevCogs,
       consumables: peakConsumables,
@@ -1052,6 +1165,7 @@ export default function App() {
       name: 'Promoter Hosted Target ($5 Clip)',
       dotClass: 'bg-emerald-400',
       pax: 200,
+      paxLabel: '200 Pax',
       gross: promTargetGross,
       beverageCogs: promTargetBevCogs,
       consumables: promTargetConsumables,
@@ -1078,6 +1192,7 @@ export default function App() {
           : 'Promoter Hosted Under-Breakeven',
       dotClass: promLowSurplus >= 0 ? 'bg-amber-400' : 'bg-red-400',
       pax: 120,
+      paxLabel: '120 Pax',
       gross: promLowGross,
       beverageCogs: promLowBevCogs,
       consumables: promLowConsumables,
@@ -1086,6 +1201,25 @@ export default function App() {
       overheads: promLowOverheads,
       labourPct: (baseWages / promLowGross) * 100,
       surplus: promLowSurplus,
+    };
+
+    // 7. Fixed Venue Hire (Flat Rate — Non-Scaling)
+    const fixedHireGross = simFixedHireFee;
+    const fixedHireSurplus = fixedHireGross - baseWages;
+    const fixedHire = {
+      id: 'fixed-hire',
+      name: `Fixed Venue Hire ($${Math.round(simFixedHireFee).toLocaleString()} Flat Fee)`,
+      dotClass: 'bg-cyan-400',
+      pax: 0,
+      paxLabel: 'Flat Rate (No Scale)',
+      gross: fixedHireGross,
+      beverageCogs: 0,
+      consumables: 0,
+      totalCogs: 0,
+      wages: baseWages,
+      overheads: 0,
+      labourPct: fixedHireGross > 0 ? (baseWages / fixedHireGross) * 100 : 0,
+      surplus: fixedHireSurplus,
     };
 
     // Promoter Breakeven at Baseline ($5 Clip + $22.50 Bar Spend + $2.50 Cloak)
@@ -1106,6 +1240,7 @@ export default function App() {
       peakOwned,
       promoterTarget,
       promoterLow,
+      fixedHire,
       rows: [
         actuals,
         conservativeOwned,
@@ -1113,11 +1248,12 @@ export default function App() {
         peakOwned,
         promoterTarget,
         promoterLow,
+        fixedHire,
       ],
       promoterBreakevenNoDeposit,
       promoterBreakevenWithDeposit,
     };
-  }, [roster, rosterSummary.grossWages, ownedOverheads]);
+  }, [roster, rosterSummary.grossWages, ownedOverheads, simFixedHireFee]);
 
   // Filtered Pipeline Events preserving original index in `events`
   const filteredEventsWithIndex = useMemo(() => {
@@ -1146,15 +1282,22 @@ export default function App() {
   const simulatorSnapshot = useMemo(
     () => ({
       'Production Mode':
-        simMode === 'owned'
+        simMode === 'fixed_hire'
+          ? `Fixed Venue Hire ($${simFixedHireFee.toFixed(2)} Flat Fee)`
+          : simMode === 'owned'
           ? 'Trough-Owned Party (100% Retention)'
           : `Promoter Hosted ($${simTicketClip.toFixed(2)} Ticket Clip)`,
-      'Expected Attendance (Pax)': simPax,
+      'Expected Attendance (Pax)': simMode === 'fixed_hire' ? 0 : simPax,
+      'Fixed Venue Hire Fee (AUD)': simMode === 'fixed_hire' ? simFixedHireFee : 0,
       'Average Ticket Yield / Clip (AUD)':
-        simMode === 'owned' ? simTicketPrice : simTicketClip,
-      'Average Bar Spend / Head (AUD)': simBarSpend,
-      'Cloakroom Check-In Rate (%)': simCloakRate,
-      'Beverage COGS Target (%)': simCogsRate,
+        simMode === 'fixed_hire'
+          ? 0
+          : simMode === 'owned'
+          ? simTicketPrice
+          : simTicketClip,
+      'Average Bar Spend / Head (AUD)': simMode === 'fixed_hire' ? 0 : simBarSpend,
+      'Cloakroom Check-In Rate (%)': simMode === 'fixed_hire' ? 0 : simCloakRate,
+      'Beverage COGS Target (%)': simMode === 'fixed_hire' ? 0 : simCogsRate,
       'Ticket / Clip Revenue (AUD)': Number(simMetrics.ticketRevenue.toFixed(2)),
       'Bar POS Turnover (AUD)': Number(simMetrics.barRevenue.toFixed(2)),
       'Cloakroom Revenue (AUD)': Number(simMetrics.cloakRevenue.toFixed(2)),
@@ -1169,6 +1312,7 @@ export default function App() {
     [
       simMode,
       simPax,
+      simFixedHireFee,
       simTicketPrice,
       simTicketClip,
       simBarSpend,
@@ -1214,7 +1358,9 @@ export default function App() {
               <i className="fa-solid fa-arrows-rotate text-trough-yellow"></i>
               <span>
                 {simMode === 'owned'
-                  ? 'Switch to Promoter Model ($5 Clip)'
+                  ? 'Switch to Promoter ($5 Clip)'
+                  : simMode === 'promoter'
+                  ? 'Switch to Fixed Venue Hire'
                   : 'Switch to Trough-Owned Model'}
               </span>
             </button>
@@ -1706,7 +1852,7 @@ export default function App() {
                               isBaseline ? 'font-bold text-white' : ''
                             }`}
                           >
-                            {row.pax} Pax
+                            {row.paxLabel}
                           </td>
                           <td
                             className={`py-3 px-3.5 font-mono ${
@@ -1919,7 +2065,7 @@ export default function App() {
                         Parameters
                       </h3>
                       <span className="text-xs text-trough-muted block">
-                        Adjust attendance, ticket yield, COGS &amp; direct overheads
+                        Adjust event revenue model, attendance, or fixed venue hire fee
                       </span>
                     </div>
                     <button
@@ -1930,339 +2076,484 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Operating Mode Radio Switch */}
+                  {/* Operating Mode Radio Switch (3 Options: Owned, Promoter Clip + Bar, Fixed Venue Hire) */}
                   <div>
                     <label className="block text-xs font-semibold text-trough-muted uppercase tracking-wider mb-2">
-                      Event Production Mode
+                      Event Production &amp; Revenue Mode
                     </label>
-                    <div className="grid grid-cols-2 gap-2 bg-[#191919] p-1.5 rounded-xl border border-neutral-800">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-[#191919] p-1.5 rounded-xl border border-neutral-800">
                       <button
-                        onClick={() => setSimMode('owned')}
-                        className={`h-9 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        type="button"
+                        onClick={() => {
+                          setSimMode('owned');
+                          if (
+                            simEventFormat === 'Promoter Hosted' ||
+                            simEventFormat === 'Fixed Venue Hire'
+                          ) {
+                            setSimEventFormat('Owned Hero Night');
+                          }
+                        }}
+                        className={`h-9 px-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                           simMode === 'owned'
                             ? 'bg-trough-yellow text-black'
                             : 'text-neutral-300 hover:text-white'
                         }`}
                       >
                         <i className="fa-solid fa-crown"></i>
-                        <span>Trough-Owned Party</span>
+                        <span>Trough-Owned</span>
                       </button>
                       <button
-                        onClick={() => setSimMode('promoter')}
-                        className={`h-9 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        type="button"
+                        onClick={() => {
+                          setSimMode('promoter');
+                          if (
+                            simEventFormat === 'Owned Hero Night' ||
+                            simEventFormat === 'Fixed Venue Hire'
+                          ) {
+                            setSimEventFormat('Promoter Hosted');
+                          }
+                        }}
+                        className={`h-9 px-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                           simMode === 'promoter'
                             ? 'bg-trough-yellow text-black'
                             : 'text-neutral-300 hover:text-white'
                         }`}
                       >
                         <i className="fa-solid fa-handshake"></i>
-                        <span>Promoter (${simTicketClip.toFixed(2)} Clip)</span>
+                        <span>Clip + Bar Spend</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimMode('fixed_hire');
+                          if (
+                            simEventFormat === 'Owned Hero Night' ||
+                            simEventFormat === 'Promoter Hosted'
+                          ) {
+                            setSimEventFormat('Fixed Venue Hire');
+                          }
+                        }}
+                        className={`h-9 px-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                          simMode === 'fixed_hire'
+                            ? 'bg-trough-yellow text-black'
+                            : 'text-neutral-300 hover:text-white'
+                        }`}
+                      >
+                        <i className="fa-solid fa-building-lock"></i>
+                        <span>Fixed Venue Hire</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* Attendance Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-neutral-300">Expected Attendance</span>
-                      <span className="font-mono font-bold text-trough-yellow bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
-                        {simPax} Pax
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="50"
-                      max="300"
-                      step="5"
-                      value={simPax}
-                      onChange={(e) => setSimPax(parseInt(e.target.value, 10))}
-                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                    />
-                    <div className="grid grid-cols-4 text-[10px] text-neutral-500 font-mono pt-0.5">
-                      <span className="text-left">50 Min</span>
-                      <span className="text-center text-amber-400">
-                        {performanceMatrix.promoterBreakevenNoDeposit} B/E
-                      </span>
-                      <span className="text-center">200 Base</span>
-                      <span className="text-right text-rose-400 font-bold">300 Max</span>
-                    </div>
-                  </div>
-
-                  {/* Ticket Yield Input (Visible in Owned Mode) */}
-                  {simMode === 'owned' && (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-medium text-neutral-300">Average Ticket Price</span>
-                        <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
-                          ${simTicketPrice.toFixed(2)} AUD
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="15"
-                        max="60"
-                        step="1"
-                        value={simTicketPrice}
-                        onChange={(e) => setSimTicketPrice(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                      />
-                      <p className="text-[10px] text-neutral-400">
-                        Net price retained per paid attendee after platform fees.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Editable Direct Overheads Panel (Visible in Trough-Owned Mode) */}
-                  {simMode === 'owned' && (
-                    <div className="p-3.5 rounded-xl bg-[#191919] border border-trough-yellow/30 text-xs space-y-3">
-                      <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                  {/* FIXED VENUE HIRE FEE PANEL (Visible when simMode === 'fixed_hire') */}
+                  {simMode === 'fixed_hire' ? (
+                    <div className="p-4 rounded-xl bg-[#191919] border border-trough-yellow/40 text-xs space-y-4">
+                      <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
                         <span className="font-bold text-trough-yellow flex items-center gap-1.5">
-                          <i className="fa-solid fa-file-invoice-dollar"></i> Direct Overheads
-                          (Trough-Owned)
+                          <i className="fa-solid fa-building-lock"></i> Fixed Venue Hire Fee (Flat
+                          AUD)
                         </span>
-                        <button
-                          type="button"
-                          onClick={resetOwnedOverheads}
-                          className="text-[10px] text-neutral-400 hover:text-trough-yellow font-mono cursor-pointer whitespace-nowrap"
-                        >
-                          Reset ($1,750)
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <div className="flex flex-col justify-between space-y-1">
-                          <label className="block text-[10px] text-neutral-400 truncate">
-                            DJ &amp; Talent ($)
-                          </label>
-                          <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
-                            <span className="text-neutral-400 font-mono mr-1">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="50"
-                              value={ownedOverheads.talentCost}
-                              onChange={(e) =>
-                                updateOwnedOverhead(
-                                  'talentCost',
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col justify-between space-y-1">
-                          <label className="block text-[10px] text-neutral-400 truncate">
-                            Sound/Lighting &amp; Decor ($)
-                          </label>
-                          <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
-                            <span className="text-neutral-400 font-mono mr-1">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="25"
-                              value={ownedOverheads.productionCost}
-                              onChange={(e) =>
-                                updateOwnedOverhead(
-                                  'productionCost',
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col justify-between space-y-1">
-                          <label className="block text-[10px] text-neutral-400 truncate">
-                            Marketing &amp; Posters ($)
-                          </label>
-                          <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
-                            <span className="text-neutral-400 font-mono mr-1">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="25"
-                              value={ownedOverheads.marketingCost}
-                              onChange={(e) =>
-                                updateOwnedOverhead(
-                                  'marketingCost',
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col justify-between space-y-1">
-                          <label className="block text-[10px] text-neutral-400 truncate">
-                            Other Direct Overheads ($)
-                          </label>
-                          <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
-                            <span className="text-neutral-400 font-mono mr-1">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="25"
-                              value={ownedOverheads.otherCost}
-                              onChange={(e) =>
-                                updateOwnedOverhead(
-                                  'otherCost',
-                                  parseFloat(e.target.value) || 0
-                                )
-                              }
-                              className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px]">
-                        <span className="text-neutral-400">EFTPOS / Merchant Fee (%):</span>
-                        <div className="h-7 inline-flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            step="0.1"
-                            value={ownedOverheads.merchantFeePct}
-                            onChange={(e) =>
-                              updateOwnedOverhead(
-                                'merchantFeePct',
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-12 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                          <span className="text-neutral-400 font-mono ml-1">%</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Editable Promoter Ticket Clip Banner (Visible in Promoter Mode) */}
-                  {simMode === 'promoter' && (
-                    <div className="p-3.5 rounded-xl bg-trough-yellow/10 border border-trough-yellow/30 text-xs space-y-2.5">
-                      <div className="flex justify-between items-center font-bold text-trough-yellow">
-                        <span>
-                          <i className="fa-solid fa-ticket"></i> Venue Ticket Clip (Editable)
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-trough-yellow/15 text-trough-yellow border border-trough-yellow/30">
+                          NON-SCALING FLAT AMOUNT
                         </span>
-                        <div className="h-7 inline-flex items-center bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg px-2.5">
-                          <span className="text-trough-yellow font-mono mr-1">$</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="50"
-                            step="0.5"
-                            value={simTicketClip}
-                            onChange={(e) =>
-                              setSimTicketClip(Math.max(0, parseFloat(e.target.value) || 0))
-                            }
-                            className="w-14 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                          <span className="text-[10px] text-neutral-400 ml-1">/ Ticket</span>
-                        </div>
                       </div>
 
-                      <input
-                        type="range"
-                        min="0"
-                        max="25"
-                        step="0.5"
-                        value={Math.min(25, simTicketClip)}
-                        onChange={(e) => setSimTicketClip(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                      />
-                      <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
-                        <span>$0 Clip</span>
-                        <span className="text-trough-yellow">$5.00 Standard</span>
-                        <span>$10.00+ High Clip</span>
-                      </div>
-
-                      <p className="text-[11px] text-neutral-300 leading-tight">
-                        Venue collects and retains ${simTicketClip.toFixed(2)} per paid ticket.
-                        Promoter retains balance. Venue retains 100% of Bar &amp; Cloak.
-                      </p>
-                      <div className="pt-1 border-t border-trough-yellow/20 flex items-center justify-between">
-                        <label className="text-[11px] text-neutral-200 cursor-pointer flex items-center gap-1.5">
-                          <input
-                            type="checkbox"
-                            checked={simPromoterDeposit}
-                            onChange={(e) => setSimPromoterDeposit(e.target.checked)}
-                            className="rounded border-neutral-700 text-trough-yellow focus:ring-0"
-                          />
-                          Include $550 Non-Refundable Booking Deposit
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] text-neutral-300 font-medium">
+                          Enter Fixed Venue Hire Amount ($ AUD):
                         </label>
+                        <div className="h-11 flex items-center bg-[#222222] border border-trough-yellow/60 rounded-xl px-3.5 focus-within:border-trough-yellow">
+                          <span className="text-trough-yellow font-mono font-bold text-base mr-2">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={simFixedHireFee}
+                            onChange={(e) =>
+                              updateFixedHireFee(parseFloat(e.target.value) || 0)
+                            }
+                            className="w-full bg-transparent text-right font-mono font-bold text-white text-lg focus:outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="text-xs font-mono text-neutral-400 ml-2">AUD</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-[11px] text-neutral-400">
+                          <span>Quick Adjust Slider</span>
+                          <span className="font-mono text-trough-yellow font-bold">
+                            ${formatMoney(simFixedHireFee)}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="500"
+                          max="25000"
+                          step="250"
+                          value={Math.min(25000, Math.max(500, simFixedHireFee))}
+                          onChange={(e) => updateFixedHireFee(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                        />
+                        <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                          <span>$500</span>
+                          <span>$5,000 Standard</span>
+                          <span>$12,500</span>
+                          <span>$25,000</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <span className="block text-[10px] text-neutral-400 uppercase tracking-wider">
+                          Quick Presets:
+                        </span>
+                        <div className="grid grid-cols-5 gap-1.5 font-mono">
+                          {[2500, 3500, 5000, 7500, 10000].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => updateFixedHireFee(preset)}
+                              className={`h-7 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                                simFixedHireFee === preset
+                                  ? 'bg-trough-yellow text-black border-trough-yellow'
+                                  : 'bg-[#222222] text-neutral-300 border-neutral-700 hover:border-neutral-500 hover:text-white'
+                              }`}
+                            >
+                              ${preset.toLocaleString()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-[#222222] border border-neutral-800 text-[11px] text-neutral-300 space-y-1">
+                        <div className="font-semibold text-white flex items-center gap-1.5">
+                          <i className="fa-solid fa-circle-info text-trough-yellow"></i> Fixed Hire
+                          Revenue Rule
+                        </div>
+                        <p className="text-neutral-400 leading-relaxed">
+                          Gross venue revenue is strictly the{' '}
+                          <strong className="text-white">${formatMoney(simFixedHireFee)}</strong>{' '}
+                          flat hire fee entered above. It does not scale with attendance and has no
+                          other influencing revenue factors (Venue Ticket Clip = $0, Bar Spend = $0,
+                          Cloakroom = $0, Deposit = $0).
+                        </p>
                       </div>
                     </div>
+                  ) : (
+                    <>
+                      {/* Attendance Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-neutral-300">Expected Attendance</span>
+                          <span className="font-mono font-bold text-trough-yellow bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
+                            {simPax} Pax
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="50"
+                          max="300"
+                          step="5"
+                          value={simPax}
+                          onChange={(e) => setSimPax(parseInt(e.target.value, 10))}
+                          className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                        />
+                        <div className="grid grid-cols-4 text-[10px] text-neutral-500 font-mono pt-0.5">
+                          <span className="text-left">50 Min</span>
+                          <span className="text-center text-amber-400">
+                            {performanceMatrix.promoterBreakevenNoDeposit} B/E
+                          </span>
+                          <span className="text-center">200 Base</span>
+                          <span className="text-right text-rose-400 font-bold">300 Max</span>
+                        </div>
+                      </div>
+
+                      {/* Ticket Yield Input (Visible in Owned Mode) */}
+                      {simMode === 'owned' && (
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-medium text-neutral-300">
+                              Average Ticket Price
+                            </span>
+                            <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
+                              ${simTicketPrice.toFixed(2)} AUD
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="15"
+                            max="60"
+                            step="1"
+                            value={simTicketPrice}
+                            onChange={(e) => setSimTicketPrice(parseFloat(e.target.value))}
+                            className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                          />
+                          <p className="text-[10px] text-neutral-400">
+                            Net price retained per paid attendee after platform fees.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Editable Direct Overheads Panel (Visible in Trough-Owned Mode) */}
+                      {simMode === 'owned' && (
+                        <div className="p-3.5 rounded-xl bg-[#191919] border border-trough-yellow/30 text-xs space-y-3">
+                          <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                            <span className="font-bold text-trough-yellow flex items-center gap-1.5">
+                              <i className="fa-solid fa-file-invoice-dollar"></i> Direct Overheads
+                              (Trough-Owned)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={resetOwnedOverheads}
+                              className="text-[10px] text-neutral-400 hover:text-trough-yellow font-mono cursor-pointer whitespace-nowrap"
+                            >
+                              Reset ($1,750)
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="flex flex-col justify-between space-y-1">
+                              <label className="block text-[10px] text-neutral-400 truncate">
+                                DJ &amp; Talent ($)
+                              </label>
+                              <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
+                                <span className="text-neutral-400 font-mono mr-1">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="50"
+                                  value={ownedOverheads.talentCost}
+                                  onChange={(e) =>
+                                    updateOwnedOverhead(
+                                      'talentCost',
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col justify-between space-y-1">
+                              <label className="block text-[10px] text-neutral-400 truncate">
+                                Sound/Lighting &amp; Decor ($)
+                              </label>
+                              <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
+                                <span className="text-neutral-400 font-mono mr-1">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="25"
+                                  value={ownedOverheads.productionCost}
+                                  onChange={(e) =>
+                                    updateOwnedOverhead(
+                                      'productionCost',
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col justify-between space-y-1">
+                              <label className="block text-[10px] text-neutral-400 truncate">
+                                Marketing &amp; Posters ($)
+                              </label>
+                              <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
+                                <span className="text-neutral-400 font-mono mr-1">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="25"
+                                  value={ownedOverheads.marketingCost}
+                                  onChange={(e) =>
+                                    updateOwnedOverhead(
+                                      'marketingCost',
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col justify-between space-y-1">
+                              <label className="block text-[10px] text-neutral-400 truncate">
+                                Other Direct Overheads ($)
+                              </label>
+                              <div className="h-8 flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
+                                <span className="text-neutral-400 font-mono mr-1">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="25"
+                                  value={ownedOverheads.otherCost}
+                                  onChange={(e) =>
+                                    updateOwnedOverhead(
+                                      'otherCost',
+                                      parseFloat(e.target.value) || 0
+                                    )
+                                  }
+                                  className="w-full bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px]">
+                            <span className="text-neutral-400">EFTPOS / Merchant Fee (%):</span>
+                            <div className="h-7 inline-flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2.5 focus-within:border-trough-yellow">
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                step="0.1"
+                                value={ownedOverheads.merchantFeePct}
+                                onChange={(e) =>
+                                  updateOwnedOverhead(
+                                    'merchantFeePct',
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                                className="w-12 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                              <span className="text-neutral-400 font-mono ml-1">%</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Editable Promoter Ticket Clip Banner (Visible in Promoter Mode) */}
+                      {simMode === 'promoter' && (
+                        <div className="p-3.5 rounded-xl bg-trough-yellow/10 border border-trough-yellow/30 text-xs space-y-2.5">
+                          <div className="flex justify-between items-center font-bold text-trough-yellow">
+                            <span>
+                              <i className="fa-solid fa-ticket"></i> Venue Ticket Clip (Editable)
+                            </span>
+                            <div className="h-7 inline-flex items-center bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg px-2.5">
+                              <span className="text-trough-yellow font-mono mr-1">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                step="0.5"
+                                value={simTicketClip}
+                                onChange={(e) =>
+                                  setSimTicketClip(Math.max(0, parseFloat(e.target.value) || 0))
+                                }
+                                className="w-14 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                              <span className="text-[10px] text-neutral-400 ml-1">/ Ticket</span>
+                            </div>
+                          </div>
+
+                          <input
+                            type="range"
+                            min="0"
+                            max="25"
+                            step="0.5"
+                            value={Math.min(25, simTicketClip)}
+                            onChange={(e) => setSimTicketClip(parseFloat(e.target.value))}
+                            className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                          />
+                          <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
+                            <span>$0 Clip</span>
+                            <span className="text-trough-yellow">$5.00 Standard</span>
+                            <span>$10.00+ High Clip</span>
+                          </div>
+
+                          <p className="text-[11px] text-neutral-300 leading-tight">
+                            Venue collects and retains ${simTicketClip.toFixed(2)} per paid ticket.
+                            Promoter retains balance. Venue retains 100% of Bar &amp; Cloak.
+                          </p>
+                          <div className="pt-1 border-t border-trough-yellow/20 flex items-center justify-between">
+                            <label className="text-[11px] text-neutral-200 cursor-pointer flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={simPromoterDeposit}
+                                onChange={(e) => setSimPromoterDeposit(e.target.checked)}
+                                className="rounded border-neutral-700 text-trough-yellow focus:ring-0"
+                              />
+                              Include $550 Non-Refundable Booking Deposit
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Average Bar Spend */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-neutral-300">
+                            Average Bar Spend Per Head
+                          </span>
+                          <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
+                            ${simBarSpend.toFixed(2)} AUD
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="12"
+                          max="45"
+                          step="0.5"
+                          value={simBarSpend}
+                          onChange={(e) => setSimBarSpend(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                        />
+                        <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
+                          <span>$12 Low</span>
+                          <span>$22.50 Baseline</span>
+                          <span>$35+ High Trade</span>
+                        </div>
+                      </div>
+
+                      {/* Cloakroom Check-in % */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-neutral-300">
+                            Cloakroom Check-in Rate
+                          </span>
+                          <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[110px] text-right">
+                            {simCloakRate}% ($5.00 / item)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="15"
+                          max="85"
+                          step="5"
+                          value={simCloakRate}
+                          onChange={(e) => setSimCloakRate(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                        />
+                      </div>
+
+                      {/* Beverage COGS Target */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-neutral-300">
+                            Beverage Stock COGS %
+                          </span>
+                          <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
+                            {simCogsRate.toFixed(1)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="16"
+                          max="30"
+                          step="0.5"
+                          value={simCogsRate}
+                          onChange={(e) => setSimCogsRate(parseFloat(e.target.value))}
+                          className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                        />
+                        <p className="text-[10px] text-neutral-400">
+                          Strict Trough X KPI cap is 22.0% maximum.
+                        </p>
+                      </div>
+                    </>
                   )}
-
-                  {/* Average Bar Spend */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-neutral-300">Average Bar Spend Per Head</span>
-                      <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
-                        ${simBarSpend.toFixed(2)} AUD
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="12"
-                      max="45"
-                      step="0.5"
-                      value={simBarSpend}
-                      onChange={(e) => setSimBarSpend(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                    />
-                    <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
-                      <span>$12 Low</span>
-                      <span>$22.50 Baseline</span>
-                      <span>$35+ High Trade</span>
-                    </div>
-                  </div>
-
-                  {/* Cloakroom Check-in % */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-neutral-300">Cloakroom Check-in Rate</span>
-                      <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[110px] text-right">
-                        {simCloakRate}% ($5.00 / item)
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="15"
-                      max="85"
-                      step="5"
-                      value={simCloakRate}
-                      onChange={(e) => setSimCloakRate(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                    />
-                  </div>
-
-                  {/* Beverage COGS Target */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-neutral-300">Beverage Stock COGS %</span>
-                      <span className="font-mono font-bold text-white bg-neutral-800 px-2.5 py-0.5 rounded border border-neutral-700 min-w-[84px] text-right">
-                        {simCogsRate.toFixed(1)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="16"
-                      max="30"
-                      step="0.5"
-                      value={simCogsRate}
-                      onChange={(e) => setSimCogsRate(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
-                    />
-                    <p className="text-[10px] text-neutral-400">
-                      Strict Trough X KPI cap is 22.0% maximum.
-                    </p>
-                  </div>
                 </div>
               </div>
 
@@ -2276,7 +2567,11 @@ export default function App() {
                         Pro-Forma Statement
                       </h3>
                       <span className="text-xs text-trough-muted block">
-                        {simMode === 'owned'
+                        {simMode === 'fixed_hire'
+                          ? `Fixed Venue Hire Model ($${formatMoney(
+                              simFixedHireFee
+                            )} Flat Fee Only — Non-Scaling)`
+                          : simMode === 'owned'
                           ? 'Trough-Owned Event Baseline Model (100% Ticket Revenue Retained)'
                           : `Promoter Hosted Model ($${simTicketClip.toFixed(
                               2
@@ -2306,36 +2601,63 @@ export default function App() {
                           AUSTRALIAN DOLLARS
                         </span>
                       </div>
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
-                        <span>
-                          {simMode === 'owned'
-                            ? `Ticket Sales (${simPax} @ $${simTicketPrice.toFixed(2)}):`
-                            : `Venue Ticket Clip (${simPax} @ $${simTicketClip.toFixed(2)}):`}
-                        </span>
-                        <span className="font-bold text-white text-right tabular-nums">
-                          ${formatMoney(simMetrics.ticketRevenue)}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
-                        <span>Bar / POS Turnover:</span>
-                        <span className="font-bold text-white text-right tabular-nums">
-                          ${formatMoney(simMetrics.barRevenue)}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
-                        <span>Cloakroom Takings:</span>
-                        <span className="font-bold text-white text-right tabular-nums">
-                          ${formatMoney(simMetrics.cloakRevenue)}
-                        </span>
-                      </div>
-                      {simMode === 'promoter' && (
-                        <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-amber-300 min-h-[24px]">
-                          <span>Promoter Booking Deposit:</span>
-                          <span className="font-bold text-right tabular-nums">
-                            ${formatMoney(simMetrics.depositRevenue)}
-                          </span>
-                        </div>
+
+                      {simMode === 'fixed_hire' ? (
+                        <>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
+                            <span>Fixed Venue Hire Fee (Flat Contracted Amount):</span>
+                            <span className="font-bold text-white text-right tabular-nums">
+                              ${formatMoney(simMetrics.fixedHireRevenue)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-500 min-h-[24px]">
+                            <span>Venue Ticket Clip &amp; Bar Spend:</span>
+                            <span className="text-right tabular-nums">
+                              $0.00 (Excluded — Fixed Hire)
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-500 min-h-[24px]">
+                            <span>Cloakroom &amp; Booking Deposit:</span>
+                            <span className="text-right tabular-nums">
+                              $0.00 (Excluded — Fixed Hire)
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
+                            <span>
+                              {simMode === 'owned'
+                                ? `Ticket Sales (${simPax} @ $${simTicketPrice.toFixed(2)}):`
+                                : `Venue Ticket Clip (${simPax} @ $${simTicketClip.toFixed(2)}):`}
+                            </span>
+                            <span className="font-bold text-white text-right tabular-nums">
+                              ${formatMoney(simMetrics.ticketRevenue)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
+                            <span>Bar / POS Turnover:</span>
+                            <span className="font-bold text-white text-right tabular-nums">
+                              ${formatMoney(simMetrics.barRevenue)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
+                            <span>Cloakroom Takings:</span>
+                            <span className="font-bold text-white text-right tabular-nums">
+                              ${formatMoney(simMetrics.cloakRevenue)}
+                            </span>
+                          </div>
+                          {simMode === 'promoter' && (
+                            <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-amber-300 min-h-[24px]">
+                              <span>Promoter Booking Deposit:</span>
+                              <span className="font-bold text-right tabular-nums">
+                                ${formatMoney(simMetrics.depositRevenue)}
+                              </span>
+                            </div>
+                          )}
+                        </>
                       )}
+
                       <div className="pt-2 border-t border-neutral-800 grid grid-cols-[1fr_auto] items-center gap-4 font-bold text-sm text-white font-sans">
                         <span>Total Gross Turnover:</span>
                         <span className="font-mono text-trough-yellow text-right tabular-nums">
@@ -2351,11 +2673,15 @@ export default function App() {
                           2. COST OF GOODS SOLD (COGS)
                         </h3>
                         <span className="font-sans text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
-                          TARGET: &le; 22%
+                          {simMode === 'fixed_hire' ? 'NOT APPLICABLE (FLAT HIRE)' : 'TARGET: ≤ 22%'}
                         </span>
                       </div>
                       <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[24px]">
-                        <span>Beverage Stock Burn ({simCogsRate.toFixed(1)}%):</span>
+                        <span>
+                          {simMode === 'fixed_hire'
+                            ? 'Beverage Stock Burn (Excluded in Fixed Hire):'
+                            : `Beverage Stock Burn (${simCogsRate.toFixed(1)}%):`}
+                        </span>
                         <span className="text-rose-400 text-right tabular-nums">
                           (${formatMoney(simMetrics.beverageCogs)})
                         </span>
@@ -2420,7 +2746,9 @@ export default function App() {
                           </div>
                         ) : (
                           <span className="text-rose-400 text-right tabular-nums">
-                            $0.00 (Promoter Covered)
+                            {simMode === 'fixed_hire'
+                              ? '$0.00 (Hirer Covered)'
+                              : '$0.00 (Promoter Covered)'}
                           </span>
                         )}
                       </div>
@@ -2474,7 +2802,9 @@ export default function App() {
                           </div>
                         ) : (
                           <span className="text-rose-400 text-right tabular-nums">
-                            $0.00 (Promoter Covered)
+                            {simMode === 'fixed_hire'
+                              ? '$0.00 (Hirer Covered)'
+                              : '$0.00 (Promoter Covered)'}
                           </span>
                         )}
                       </div>
@@ -2505,7 +2835,9 @@ export default function App() {
                       <div className="grid grid-cols-[1fr_auto] items-center gap-4 text-neutral-300 min-h-[28px]">
                         <span>
                           EFTPOS / Merchant Terminal Fees (
-                          {simMode === 'owned'
+                          {simMode === 'fixed_hire'
+                            ? '0.0% — Invoiced'
+                            : simMode === 'owned'
                             ? `${ownedOverheads.merchantFeePct.toFixed(1)}%`
                             : '1.5%'}
                           ):
@@ -2990,8 +3322,8 @@ export default function App() {
                         Promoter Night Viability Tester
                       </h3>
                       <p className="text-xs text-trough-muted">
-                        Test any external promoter proposal &amp; ticket clip against our real cost
-                        structures
+                        Test either a Venue Ticket Clip + Bar Spend deal or a flat Fixed Venue Hire
+                        Fee against our real cost structure
                       </p>
                     </div>
                     {dealMetrics.netSurplus >= 0 ? (
@@ -3005,99 +3337,229 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs text-neutral-300 font-medium">
-                        Anticipated Attendance
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={dealPax}
-                          min="50"
-                          max="300"
-                          onChange={(e) => setDealPax(parseInt(e.target.value, 10) || 0)}
-                          className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
-                        />
-                        <span className="absolute right-3 top-2 text-xs text-neutral-500">PAX</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs text-trough-yellow font-semibold">
-                        Venue Ticket Clip / Head
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-xs text-trough-yellow">$</span>
-                        <input
-                          type="number"
-                          value={dealClip}
-                          min="0"
-                          max="50"
-                          step="0.5"
-                          onChange={(e) =>
-                            setDealClip(Math.max(0, parseFloat(e.target.value) || 0))
-                          }
-                          className="w-full bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
-                        />
-                        <span className="absolute right-3 top-2 text-xs text-neutral-500">AUD</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs text-neutral-300 font-medium">
-                        Anticipated Bar Spend / Head
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-xs text-neutral-500">$</span>
-                        <input
-                          type="number"
-                          value={dealSpend}
-                          min="10"
-                          max="50"
-                          step="0.5"
-                          onChange={(e) => setDealSpend(parseFloat(e.target.value) || 0)}
-                          className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
-                        />
-                        <span className="absolute right-3 top-2 text-xs text-neutral-500">AUD</span>
-                      </div>
+                  {/* Deal Revenue Option Toggle: Ticket Clip + Bar Spend vs Fixed Venue Hire Fee */}
+                  <div className="mb-4">
+                    <label className="block text-[11px] font-semibold text-trough-muted uppercase tracking-wider mb-1.5">
+                      Venue Hire Revenue Option
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-[#191919] p-1.5 rounded-xl border border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => setDealMode('clip_bar')}
+                        className={`h-9 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          dealMode === 'clip_bar'
+                            ? 'bg-trough-yellow text-black'
+                            : 'text-neutral-300 hover:text-white'
+                        }`}
+                      >
+                        <i className="fa-solid fa-ticket"></i>
+                        <span>Venue Ticket Clip + Bar Spend</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDealMode('fixed_hire')}
+                        className={`h-9 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          dealMode === 'fixed_hire'
+                            ? 'bg-trough-yellow text-black'
+                            : 'text-neutral-300 hover:text-white'
+                        }`}
+                      >
+                        <i className="fa-solid fa-building-lock"></i>
+                        <span>Fixed Venue Hire Fee (Flat Amount)</span>
+                      </button>
                     </div>
                   </div>
 
+                  {dealMode === 'fixed_hire' ? (
+                    <div className="p-4 rounded-xl bg-[#191919] border border-trough-yellow/40 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <label className="text-xs text-trough-yellow font-bold block">
+                            Fixed Venue Hire Fee (Flat AUD)
+                          </label>
+                          <span className="text-[11px] text-neutral-400">
+                            Flat amount only — does not scale with attendance or include bar/ticket
+                            factors
+                          </span>
+                        </div>
+                        <div className="h-10 inline-flex items-center bg-[#222222] border border-trough-yellow/60 rounded-lg px-3 focus-within:border-trough-yellow">
+                          <span className="text-trough-yellow font-mono font-bold mr-1.5">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={simFixedHireFee}
+                            onChange={(e) =>
+                              updateFixedHireFee(parseFloat(e.target.value) || 0)
+                            }
+                            className="w-28 bg-transparent text-right font-mono font-bold text-white text-base focus:outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="text-xs text-neutral-400 font-mono ml-1.5">AUD</span>
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        min="500"
+                        max="25000"
+                        step="250"
+                        value={Math.min(25000, Math.max(500, simFixedHireFee))}
+                        onChange={(e) => updateFixedHireFee(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
+                      />
+
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1">
+                        <span className="text-[10px] text-neutral-400 uppercase font-mono">
+                          Presets:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 font-mono">
+                          {[2500, 3500, 5000, 7500, 10000].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => updateFixedHireFee(preset)}
+                              className={`px-2.5 py-1 rounded text-[11px] font-bold border transition cursor-pointer ${
+                                simFixedHireFee === preset
+                                  ? 'bg-trough-yellow text-black border-trough-yellow'
+                                  : 'bg-[#222222] text-neutral-300 border-neutral-700 hover:border-neutral-500 hover:text-white'
+                              }`}
+                            >
+                              ${preset.toLocaleString()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-300 font-medium">
+                          Anticipated Attendance
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={dealPax}
+                            min="50"
+                            max="300"
+                            onChange={(e) => setDealPax(parseInt(e.target.value, 10) || 0)}
+                            className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          />
+                          <span className="absolute right-3 top-2 text-xs text-neutral-500">
+                            PAX
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs text-trough-yellow font-semibold">
+                          Venue Ticket Clip / Head
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs text-trough-yellow">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            value={dealClip}
+                            min="0"
+                            max="50"
+                            step="0.5"
+                            onChange={(e) =>
+                              setDealClip(Math.max(0, parseFloat(e.target.value) || 0))
+                            }
+                            className="w-full bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          />
+                          <span className="absolute right-3 top-2 text-xs text-neutral-500">
+                            AUD
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs text-neutral-300 font-medium">
+                          Anticipated Bar Spend / Head
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs text-neutral-500">$</span>
+                          <input
+                            type="number"
+                            value={dealSpend}
+                            min="10"
+                            max="50"
+                            step="0.5"
+                            onChange={(e) => setDealSpend(parseFloat(e.target.value) || 0)}
+                            className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          />
+                          <span className="absolute right-3 top-2 text-xs text-neutral-500">
+                            AUD
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Financial Summary Table */}
                   <div className="mt-4 bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-2 text-xs font-mono">
-                    <div className="flex justify-between text-neutral-300">
-                      <span>
-                        Retained Ticket Clip (${dealMetrics.clip.toFixed(2)} &times; {dealPax}):
-                      </span>
-                      <span className="font-bold text-white">
-                        ${formatMoney(dealMetrics.clipTotal)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-neutral-300">
-                      <span>Retained Bar Sales:</span>
-                      <span className="font-bold text-white">
-                        ${formatMoney(dealMetrics.barTotal)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-neutral-300">
-                      <span>Retained Cloakroom (50% check-in @ $5):</span>
-                      <span className="font-bold text-white">
-                        ${formatMoney(dealMetrics.cloakTotal)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-neutral-400">
-                      <span>Less Beverage COGS (22%) &amp; Consumables:</span>
-                      <span className="text-rose-400">(${formatMoney(dealMetrics.cogs)})</span>
-                    </div>
-                    <div className="flex justify-between text-neutral-400">
-                      <span>Less Mandatory Venue Wages (IFA Roster):</span>
-                      <span className="text-rose-400">(${dealMetrics.wages.toFixed(2)})</span>
-                    </div>
-                    <div className="flex justify-between text-neutral-400">
-                      <span>Less Merchant &amp; Waste Incidentals:</span>
-                      <span className="text-rose-400">(${dealMetrics.overheads.toFixed(2)})</span>
-                    </div>
+                    {dealMode === 'fixed_hire' ? (
+                      <>
+                        <div className="flex justify-between text-neutral-300">
+                          <span>Fixed Venue Hire Fee (Flat Contracted Amount):</span>
+                          <span className="font-bold text-white">
+                            ${formatMoney(dealMetrics.fixedHireTotal)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-neutral-500">
+                          <span>Ticket Clip / Bar Spend / Cloakroom:</span>
+                          <span>$0.00 (Excluded — Fixed Hire)</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-500">
+                          <span>Beverage COGS &amp; Bar Consumables:</span>
+                          <span>($0.00)</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Less Mandatory Venue Wages (IFA Roster):</span>
+                          <span className="text-rose-400">(${dealMetrics.wages.toFixed(2)})</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between text-neutral-300">
+                          <span>
+                            Retained Ticket Clip (${dealMetrics.clip.toFixed(2)} &times; {dealPax}):
+                          </span>
+                          <span className="font-bold text-white">
+                            ${formatMoney(dealMetrics.clipTotal)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-neutral-300">
+                          <span>Retained Bar Sales:</span>
+                          <span className="font-bold text-white">
+                            ${formatMoney(dealMetrics.barTotal)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-neutral-300">
+                          <span>Retained Cloakroom (50% check-in @ $5):</span>
+                          <span className="font-bold text-white">
+                            ${formatMoney(dealMetrics.cloakTotal)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Less Beverage COGS (22%) &amp; Consumables:</span>
+                          <span className="text-rose-400">(${formatMoney(dealMetrics.cogs)})</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Less Mandatory Venue Wages (IFA Roster):</span>
+                          <span className="text-rose-400">(${dealMetrics.wages.toFixed(2)})</span>
+                        </div>
+                        <div className="flex justify-between text-neutral-400">
+                          <span>Less Merchant &amp; Waste Incidentals:</span>
+                          <span className="text-rose-400">
+                            (${dealMetrics.overheads.toFixed(2)})
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
