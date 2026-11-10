@@ -10,6 +10,10 @@ import {
   signIn,
   signOut,
   onFallbackUserChanged,
+  syncEventsToFirestore,
+  syncRosterToFirestore,
+  pullEventsFromFirestoreServer,
+  subscribeToPipelineEvents,
 } from './services/googleWorkspace';
 import {
   WorkspaceSyncPanel,
@@ -57,6 +61,7 @@ export interface OwnedDirectOverheads {
 
 const STORAGE_KEYS = {
   EVENTS: 'trough_x_saved_events_v3',
+  EVENTS_DIRTY: 'trough_x_events_dirty_v1',
   ROSTER: 'trough_x_saved_roster_v4',
   ROSTER_SUPER: 'trough_x_saved_roster_super_v4',
   ROSTER_TEMPLATES: 'trough_x_roster_templates_v4',
@@ -460,24 +465,65 @@ export default function App() {
     return EVENTS_DATA.map((e) => ({ ...e }));
   });
   const [eventsSavedNotice, setEventsSavedNotice] = useState<string | null>(null);
+  const [cloudSyncState, setCloudSyncState] = useState<
+    'idle' | 'syncing' | 'synced' | 'error'
+  >('idle');
+  const [cloudSyncMessage, setCloudSyncMessage] = useState<string | null>(null);
+  const [authErrorMsg, setAuthErrorMsg] = useState<string | null>(null);
   const [inlineEditIndex, setInlineEditIndex] = useState<number | null>(null);
   const [inlineEditDraft, setInlineEditDraft] = useState<PipelineEvent | null>(null);
 
-  // Persist helper for Events
+  // Persist helper for Events (saves locally AND pushes to Firebase Firestore across devices)
   const persistEventsToStorage = (
     nextEvents: PipelineEvent[],
     noticeMsg = 'Schedule saved'
   ) => {
     setEvents(nextEvents);
+    const timeStr = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     try {
       localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(nextEvents));
-      const timeStr = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
       setEventsSavedNotice(`${noticeMsg} (${timeStr})`);
     } catch {
       // Ignore storage quota errors
+    }
+
+    if (auth.currentUser) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.EVENTS_DIRTY);
+      } catch {
+        // Ignore
+      }
+      setCloudSyncState('syncing');
+      setCloudSyncMessage('Syncing Forthcoming Events to cloud...');
+      syncEventsToFirestore(nextEvents)
+        .then((count) => {
+          const syncedAt = new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          setCloudSyncState('synced');
+          setCloudSyncMessage(
+            `Cloud synced (${count} events • ${syncedAt})`
+          );
+        })
+        .catch((err) => {
+          console.error('Auto cloud sync error:', err);
+          setCloudSyncState('error');
+          setCloudSyncMessage('Saved locally — cloud sync retry needed');
+        });
+    } else {
+      try {
+        localStorage.setItem(STORAGE_KEYS.EVENTS_DIRTY, 'true');
+      } catch {
+        // Ignore
+      }
+      setCloudSyncState('idle');
+      setCloudSyncMessage(
+        'Saved on this device only — Sign in with Google to sync across devices'
+      );
     }
   };
 
@@ -496,6 +542,11 @@ export default function App() {
       setRosterSavedNotice(`${noticeMsg} (${timeStr})`);
     } catch {
       // Ignore storage errors
+    }
+    if (auth.currentUser) {
+      syncRosterToFirestore(roster).catch((err) => {
+        console.error('Auto roster cloud sync error:', err);
+      });
     }
   };
 
@@ -557,11 +608,17 @@ export default function App() {
 
   useEffect(() => {
     const unsubFb = onAuthStateChanged(auth, (u) => {
-      if (u) setUser(u);
+      if (u) {
+        setUser(u);
+        setAuthErrorMsg(null);
+      } else {
+        setUser(null);
+      }
     });
     const unsubGis = onFallbackUserChanged((fallbackU) => {
       if (fallbackU) {
         setUser(fallbackU as unknown as User);
+        setAuthErrorMsg(null);
       } else if (!auth.currentUser) {
         setUser(null);
       }
@@ -572,17 +629,247 @@ export default function App() {
     };
   }, []);
 
+  // Real-time Cross-Device Sync for Forthcoming Events via Firestore
+  useEffect(() => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) {
+      return;
+    }
+
+    let isCancelled = false;
+    let unsubSnapshot: (() => void) | null = null;
+
+    const initCloudSync = async () => {
+      setCloudSyncState('syncing');
+      const hasDirtyLocalEdits =
+        localStorage.getItem(STORAGE_KEYS.EVENTS_DIRTY) === 'true';
+
+      // If user edited events on this device while signed out, push those edits to cloud first
+      if (hasDirtyLocalEdits) {
+        try {
+          let localEventsToPush = events;
+          const rawSaved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+          if (rawSaved) {
+            const parsed = JSON.parse(rawSaved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localEventsToPush = parsed;
+            }
+          }
+          await syncEventsToFirestore(localEventsToPush);
+          localStorage.removeItem(STORAGE_KEYS.EVENTS_DIRTY);
+          if (!isCancelled) {
+            const timeStr = new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            setCloudSyncState('synced');
+            setCloudSyncMessage(
+              `Pushed local changes to cloud (${localEventsToPush.length} events • ${timeStr})`
+            );
+          }
+        } catch (err) {
+          console.error('Error pushing dirty local events on sign-in:', err);
+        }
+      }
+
+      if (isCancelled) return;
+
+      // Subscribe to real-time updates on /pipelineEvents
+      unsubSnapshot = subscribeToPipelineEvents(
+        fbUser.uid,
+        (cloudEvents, fromCache) => {
+          if (isCancelled) return;
+          if (cloudEvents && cloudEvents.length > 0) {
+            setEvents(cloudEvents);
+            try {
+              localStorage.setItem(
+                STORAGE_KEYS.EVENTS,
+                JSON.stringify(cloudEvents)
+              );
+              localStorage.removeItem(STORAGE_KEYS.EVENTS_DIRTY);
+            } catch {
+              // Ignore
+            }
+            const timeStr = new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            setCloudSyncState('synced');
+            setCloudSyncMessage(
+              `Live synced across devices (${cloudEvents.length} events${
+                fromCache ? '' : ` • ${timeStr}`
+              })`
+            );
+          } else if (cloudEvents === null && !fromCache) {
+            // Cloud collection is empty for this user — seed it with current schedule
+            syncEventsToFirestore(events)
+              .then((count) => {
+                if (isCancelled) return;
+                const timeStr = new Date().toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+                setCloudSyncState('synced');
+                setCloudSyncMessage(
+                  `Initialised cloud schedule (${count} events • ${timeStr})`
+                );
+              })
+              .catch((err) => {
+                console.error('Seed cloud events error:', err);
+              });
+          }
+        },
+        (err) => {
+          console.error('Real-time pipelineEvents subscription error:', err);
+          if (!isCancelled) {
+            setCloudSyncState('error');
+            setCloudSyncMessage('Cloud sync connection interrupted');
+          }
+        }
+      );
+    };
+
+    initCloudSync();
+
+    // Also force a fresh server read whenever the browser tab/app regains focus (e.g. switching from desktop to phone)
+    const handleFocusRefresh = async () => {
+      if (document.visibilityState === 'hidden' || !auth.currentUser) return;
+      try {
+        const freshEvents = await pullEventsFromFirestoreServer();
+        if (!isCancelled && freshEvents && freshEvents.length > 0) {
+          setEvents(freshEvents);
+          try {
+            localStorage.setItem(
+              STORAGE_KEYS.EVENTS,
+              JSON.stringify(freshEvents)
+            );
+          } catch {
+            // Ignore
+          }
+          const timeStr = new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          setCloudSyncState('synced');
+          setCloudSyncMessage(
+            `Live synced across devices (${freshEvents.length} events • ${timeStr})`
+          );
+        }
+      } catch {
+        // Ignore transient focus fetch errors
+      }
+    };
+
+    window.addEventListener('focus', handleFocusRefresh);
+    document.addEventListener('visibilitychange', handleFocusRefresh);
+
+    return () => {
+      isCancelled = true;
+      if (unsubSnapshot) unsubSnapshot();
+      window.removeEventListener('focus', handleFocusRefresh);
+      document.removeEventListener('visibilitychange', handleFocusRefresh);
+    };
+  }, [user?.uid]);
+
+  const handleManualCloudRefresh = async () => {
+    if (!auth.currentUser) {
+      await handleSignIn();
+      return;
+    }
+    setCloudSyncState('syncing');
+    setCloudSyncMessage('Checking cloud for latest Forthcoming Events...');
+    try {
+      const hasDirty =
+        localStorage.getItem(STORAGE_KEYS.EVENTS_DIRTY) === 'true';
+      if (hasDirty) {
+        const count = await syncEventsToFirestore(events);
+        localStorage.removeItem(STORAGE_KEYS.EVENTS_DIRTY);
+        const timeStr = new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        setCloudSyncState('synced');
+        setCloudSyncMessage(
+          `Synced ${count} events to cloud (${timeStr})`
+        );
+        return;
+      }
+
+      const freshEvents = await pullEventsFromFirestoreServer();
+      const timeStr = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      if (freshEvents && freshEvents.length > 0) {
+        setEvents(freshEvents);
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(freshEvents));
+        setCloudSyncState('synced');
+        setCloudSyncMessage(
+          `Pulled latest ${freshEvents.length} events from cloud (${timeStr})`
+        );
+        setEventsSavedNotice(`Synced from cloud (${timeStr})`);
+      } else {
+        const count = await syncEventsToFirestore(events);
+        setCloudSyncState('synced');
+        setCloudSyncMessage(
+          `Pushed ${count} events to cloud (${timeStr})`
+        );
+      }
+    } catch (err) {
+      console.error('Manual cloud sync error:', err);
+      setCloudSyncState('error');
+      setCloudSyncMessage('Cloud sync failed — check connection');
+    }
+  };
+
+  const handleForcePushEventsToCloud = async () => {
+    if (!auth.currentUser) {
+      await handleSignIn();
+      return;
+    }
+    setCloudSyncState('syncing');
+    setCloudSyncMessage('Pushing this device’s schedule to cloud...');
+    try {
+      const count = await syncEventsToFirestore(events);
+      localStorage.removeItem(STORAGE_KEYS.EVENTS_DIRTY);
+      const timeStr = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      setCloudSyncState('synced');
+      setCloudSyncMessage(
+        `Pushed ${count} events from this device to cloud (${timeStr})`
+      );
+      setEventsSavedNotice(`Pushed to cloud (${timeStr})`);
+    } catch (err) {
+      console.error('Force push cloud error:', err);
+      setCloudSyncState('error');
+      setCloudSyncMessage('Failed to push schedule to cloud');
+    }
+  };
+
   const handleSignIn = async () => {
+    setAuthErrorMsg(null);
     try {
       await signIn();
     } catch (err) {
       console.error('Google Sign-In error:', err);
+      const raw = err instanceof Error ? err.message : String(err);
+      if (raw.includes('unauthorized-domain')) {
+        setAuthErrorMsg(
+          `Firebase Auth blocked sign-in on ${window.location.hostname}. Add "${window.location.hostname}" in Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+      } else if (!raw.includes('popup-closed-by-user')) {
+        setAuthErrorMsg(`Sign-in error: ${raw}`);
+      }
     }
   };
 
   const handleSignOut = async () => {
     try {
       await signOut();
+      setCloudSyncState('idle');
+      setCloudSyncMessage(null);
     } catch (err) {
       console.error('Google Sign-Out error:', err);
     }
@@ -2050,6 +2337,86 @@ export default function App() {
                   >
                     View in Forthcoming Events &rarr;
                   </button>
+                </div>
+              )}
+
+              {/* Cross-Device Cloud Sync Status Bar in Tab 2 */}
+              <div className="pt-2 border-t border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {auth.currentUser ? (
+                    <>
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[11px] border ${
+                          cloudSyncState === 'syncing'
+                            ? 'bg-trough-yellow/15 text-trough-yellow border-trough-yellow/30'
+                            : cloudSyncState === 'error'
+                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        }`}
+                      >
+                        <i
+                          className={`fa-solid ${
+                            cloudSyncState === 'syncing'
+                              ? 'fa-arrows-rotate fa-spin'
+                              : cloudSyncState === 'error'
+                              ? 'fa-triangle-exclamation'
+                              : 'fa-cloud-arrow-up'
+                          }`}
+                        ></i>
+                        <span>
+                          {cloudSyncMessage ||
+                            `Cloud Sync Active (${auth.currentUser.email})`}
+                        </span>
+                      </span>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-lg">
+                      <i className="fa-solid fa-cloud-bolt"></i>
+                      <span>
+                        Not signed in on this device — changes are only saved to this browser until you sign in.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {auth.currentUser ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleManualCloudRefresh}
+                        className="px-2.5 py-1 rounded-lg bg-[#191919] hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                        title="Pull latest Forthcoming Events from cloud"
+                      >
+                        <i className="fa-solid fa-cloud-arrow-down text-trough-yellow"></i>
+                        <span>Pull Latest</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleForcePushEventsToCloud}
+                        className="px-2.5 py-1 rounded-lg bg-[#191919] hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                        title="Overwrite cloud schedule with this device's Forthcoming Events"
+                      >
+                        <i className="fa-solid fa-cloud-arrow-up text-emerald-400"></i>
+                        <span>Push to All Devices</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSignIn}
+                      className="px-3 py-1 rounded-lg bg-trough-yellow hover:bg-trough-yellowHover text-black font-bold text-[11px] flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <i className="fa-brands fa-google"></i>
+                      <span>Sign in to Sync Across Devices</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              {authErrorMsg && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <i className="fa-solid fa-circle-exclamation text-rose-400"></i>
+                  <span>{authErrorMsg}</span>
                 </div>
               )}
             </div>
@@ -3634,6 +4001,89 @@ export default function App() {
             />
 
             <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
+              {/* Cross-Device Cloud Sync Banner in Tab 5 */}
+              <div className="bg-[#191919] border border-neutral-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                      auth.currentUser
+                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                        : 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                    }`}
+                  >
+                    <i
+                      className={`fa-solid ${
+                        auth.currentUser
+                          ? cloudSyncState === 'syncing'
+                            ? 'fa-arrows-rotate fa-spin'
+                            : 'fa-cloud-check'
+                          : 'fa-cloud-exclamation'
+                      }`}
+                    ></i>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-white">
+                        {auth.currentUser
+                          ? 'Real-Time Cross-Device Cloud Sync Active'
+                          : 'Local Browser Mode — Sign In Required for Cross-Device Sync'}
+                      </span>
+                      {auth.currentUser && (
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          {auth.currentUser.email}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-trough-muted">
+                      {auth.currentUser
+                        ? cloudSyncMessage ||
+                          'Every event added, edited, or deleted automatically syncs across all devices signed into this Google account.'
+                        : 'Sign in with the same Google account on your desktop, tablet, and phone so Forthcoming Events stay automatically in sync across all devices.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  {auth.currentUser ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleManualCloudRefresh}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#222222] hover:bg-neutral-800 text-neutral-200 border border-neutral-700 transition flex items-center gap-1.5 cursor-pointer"
+                        title="Fetch the latest schedule from Firestore server"
+                      >
+                        <i className="fa-solid fa-cloud-arrow-down text-trough-yellow"></i>
+                        <span>Pull Latest from Cloud</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleForcePushEventsToCloud}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1.5 cursor-pointer"
+                        title="Push this device's current schedule to all other devices"
+                      >
+                        <i className="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Push This Device to Cloud</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSignIn}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-trough-yellow hover:bg-trough-yellowHover text-black transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <i className="fa-brands fa-google"></i>
+                      <span>Sign in with Google to Sync Devices</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              {authErrorMsg && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <i className="fa-solid fa-circle-exclamation text-rose-400"></i>
+                  <span>{authErrorMsg}</span>
+                </div>
+              )}
+
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">

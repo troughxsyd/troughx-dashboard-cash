@@ -16,8 +16,11 @@ import {
   query,
   where,
   getDocs,
+  getDocsFromServer,
   deleteDoc,
   serverTimestamp,
+  onSnapshot,
+  writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { PipelineEvent, RosterItem } from '../App';
@@ -1330,6 +1333,219 @@ export interface CloudWorkspaceSnapshot {
   roster: RosterItem[];
 }
 
+/**
+ * Atomically syncs the user's Forthcoming Events (`PipelineEvent[]`) to Firestore `/pipelineEvents`.
+ * Preserves `createdAt` on existing document IDs so strict Firestore security rules (`allow update`
+ * requiring `incoming().createdAt == existing().createdAt`) always pass.
+ */
+export async function syncEventsToFirestore(events: PipelineEvent[]): Promise<number> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Sign in with Google first to sync Forthcoming Events across devices.');
+  }
+
+  const uid = sanitizeValidId(user.uid, 'user');
+  const eventsCollectionPath = 'pipelineEvents';
+
+  try {
+    const existingEventsQuery = query(
+      collection(db, 'pipelineEvents'),
+      where('ownerId', '==', user.uid)
+    );
+    const existingEventsSnap = await getDocs(existingEventsQuery);
+    const existingById = new Map(existingEventsSnap.docs.map((d) => [d.id, d.data()]));
+
+    const batch = writeBatch(db);
+    const activeDocIds = new Set<string>();
+
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const eventDocId = sanitizeValidId(`${uid}_evt_${i}`, 'evt');
+      activeDocIds.add(eventDocId);
+      const existingData = existingById.get(eventDocId);
+
+      batch.set(doc(db, 'pipelineEvents', eventDocId), {
+        ownerId: user.uid,
+        date: (ev.date || 'TBC').slice(0, 32),
+        title: (ev.title || 'Untitled Trough X Event').slice(0, 160),
+        type: ev.type === 'owned' ? 'owned' : 'promoter',
+        format: (ev.format || 'Promoter Hosted').slice(0, 80),
+        pax: Math.min(1000, Math.max(0, Math.round(Number(ev.pax) || 0))),
+        barGross: Math.min(500000, Math.max(0, Number(ev.barGross) || 0)),
+        clip: Math.min(100000, Math.max(0, Number(ev.clip) || 0)),
+        ticketRev: Math.min(500000, Math.max(0, Number(ev.ticketRev) || 0)),
+        deposit: Math.min(50000, Math.max(0, Number(ev.deposit) || 0)),
+        wages: Math.min(100000, Math.max(0, Number(ev.wages) || 0)),
+        surplus: Math.min(500000, Math.max(-100000, Number(ev.surplus) || 0)),
+        sortOrder: i,
+        createdAt: existingData?.createdAt ?? serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    for (const oldDoc of existingEventsSnap.docs) {
+      if (!activeDocIds.has(oldDoc.id)) {
+        batch.delete(doc(db, 'pipelineEvents', oldDoc.id));
+      }
+    }
+
+    await batch.commit();
+    return events.length;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, eventsCollectionPath);
+  }
+}
+
+/**
+ * Atomically syncs the user's active IFA Staffing Roster (`RosterItem[]`) to Firestore `/rosterItems`.
+ */
+export async function syncRosterToFirestore(roster: RosterItem[]): Promise<number> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Sign in with Google first to sync your IFA Roster across devices.');
+  }
+
+  const uid = sanitizeValidId(user.uid, 'user');
+  const rosterCollectionPath = 'rosterItems';
+
+  try {
+    const existingRosterQuery = query(
+      collection(db, 'rosterItems'),
+      where('ownerId', '==', user.uid)
+    );
+    const existingRosterSnap = await getDocs(existingRosterQuery);
+    const existingById = new Map(existingRosterSnap.docs.map((d) => [d.id, d.data()]));
+
+    const batch = writeBatch(db);
+    const activeDocIds = new Set<string>();
+
+    for (let i = 0; i < roster.length; i++) {
+      const r = roster[i];
+      const rosterDocId = sanitizeValidId(`${uid}_role_${i}`, 'role');
+      activeDocIds.add(rosterDocId);
+      const existingData = existingById.get(rosterDocId);
+
+      batch.set(doc(db, 'rosterItems', rosterDocId), {
+        ownerId: user.uid,
+        templateId: 'active',
+        templateName: 'Baseline 200 Pax Roster (Active)',
+        role: (r.role || 'Operational Staff').slice(0, 120),
+        headcount: Math.min(50, Math.max(0, Number(r.headcount) || 0)),
+        hours: Math.min(24, Math.max(0, Number(r.hours) || 0)),
+        rate: Math.min(500, Math.max(0, Number(r.rate) || 0)),
+        hasSuper: Boolean(r.hasSuper),
+        notes: (r.notes || '').slice(0, 300),
+        sortOrder: i,
+        createdAt: existingData?.createdAt ?? serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    for (const oldDoc of existingRosterSnap.docs) {
+      if (!activeDocIds.has(oldDoc.id)) {
+        batch.delete(doc(db, 'rosterItems', oldDoc.id));
+      }
+    }
+
+    await batch.commit();
+    return roster.length;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, rosterCollectionPath);
+  }
+}
+
+/**
+ * Forces a fresh server read of `/pipelineEvents` for the authenticated user (useful on window focus / visibilitychange).
+ */
+export async function pullEventsFromFirestoreServer(): Promise<PipelineEvent[] | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+
+  const eventsQuery = query(
+    collection(db, 'pipelineEvents'),
+    where('ownerId', '==', user.uid)
+  );
+
+  try {
+    let eventsSnap;
+    try {
+      eventsSnap = await getDocsFromServer(eventsQuery);
+    } catch {
+      eventsSnap = await getDocs(eventsQuery);
+    }
+
+    if (eventsSnap.empty) return null;
+
+    return eventsSnap.docs
+      .map((d) => d.data())
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+      .map((d) => ({
+        date: String(d.date || 'TBC'),
+        title: String(d.title || 'Event'),
+        type: (d.type === 'owned' ? 'owned' : 'promoter') as 'owned' | 'promoter',
+        format: String(d.format || 'Promoter Hosted'),
+        pax: Number(d.pax) || 0,
+        barGross: Number(d.barGross) || 0,
+        clip: Number(d.clip) || 0,
+        ticketRev: Number(d.ticketRev) || 0,
+        deposit: Number(d.deposit) || 0,
+        wages: Number(d.wages) || 0,
+        surplus: Number(d.surplus) || 0,
+      }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'pipelineEvents');
+  }
+}
+
+/**
+ * Subscribes to real-time updates on `/pipelineEvents` for the currently signed-in user across all devices.
+ */
+export function subscribeToPipelineEvents(
+  uid: string,
+  onUpdate: (events: PipelineEvent[] | null, fromCache: boolean) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  const eventsQuery = query(
+    collection(db, 'pipelineEvents'),
+    where('ownerId', '==', uid)
+  );
+
+  return onSnapshot(
+    eventsQuery,
+    (snapshot) => {
+      if (snapshot.empty) {
+        onUpdate(null, snapshot.metadata.fromCache);
+        return;
+      }
+      const loadedEvents: PipelineEvent[] = snapshot.docs
+        .map((d) => d.data())
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+        .map((d) => ({
+          date: String(d.date || 'TBC'),
+          title: String(d.title || 'Event'),
+          type: (d.type === 'owned' ? 'owned' : 'promoter') as 'owned' | 'promoter',
+          format: String(d.format || 'Promoter Hosted'),
+          pax: Number(d.pax) || 0,
+          barGross: Number(d.barGross) || 0,
+          clip: Number(d.clip) || 0,
+          ticketRev: Number(d.ticketRev) || 0,
+          deposit: Number(d.deposit) || 0,
+          wages: Number(d.wages) || 0,
+          surplus: Number(d.surplus) || 0,
+        }));
+      onUpdate(loadedEvents, snapshot.metadata.fromCache);
+    },
+    (error) => {
+      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'pipelineEvents');
+      } catch {
+        // Logged by handleFirestoreError
+      }
+    }
+  );
+}
+
 export async function saveWorkspaceToFirestore(
   snapshot: CloudWorkspaceSnapshot
 ): Promise<{ eventsSaved: number; rosterSaved: number }> {
@@ -1387,80 +1603,15 @@ export async function saveWorkspaceToFirestore(
     handleFirestoreError(error, OperationType.WRITE, configPath);
   }
 
-  // 2. Sync pipelineEvents for this user
-  const eventsCollectionPath = 'pipelineEvents';
-  try {
-    const existingEventsQuery = query(
-      collection(db, 'pipelineEvents'),
-      where('ownerId', '==', user.uid)
-    );
-    const existingEventsSnap = await getDocs(existingEventsQuery);
-    for (const docSnap of existingEventsSnap.docs) {
-      await deleteDoc(doc(db, 'pipelineEvents', docSnap.id));
-    }
+  // 2. Sync pipelineEvents for this user using atomic writeBatch
+  const eventsSaved = await syncEventsToFirestore(snapshot.events);
 
-    for (let i = 0; i < snapshot.events.length; i++) {
-      const ev = snapshot.events[i];
-      const eventDocId = sanitizeValidId(`${uid}_evt_${i}`, 'evt');
-      await setDoc(doc(db, 'pipelineEvents', eventDocId), {
-        ownerId: user.uid,
-        date: (ev.date || 'TBC').slice(0, 32),
-        title: (ev.title || 'Untitled Trough X Event').slice(0, 160),
-        type: ev.type === 'owned' ? 'owned' : 'promoter',
-        format: (ev.format || 'Promoter Hosted').slice(0, 80),
-        pax: Math.min(1000, Math.max(0, Math.round(Number(ev.pax) || 0))),
-        barGross: Math.min(500000, Math.max(0, Number(ev.barGross) || 0)),
-        clip: Math.min(100000, Math.max(0, Number(ev.clip) || 0)),
-        ticketRev: Math.min(500000, Math.max(0, Number(ev.ticketRev) || 0)),
-        deposit: Math.min(50000, Math.max(0, Number(ev.deposit) || 0)),
-        wages: Math.min(100000, Math.max(0, Number(ev.wages) || 0)),
-        surplus: Math.min(500000, Math.max(-100000, Number(ev.surplus) || 0)),
-        sortOrder: i,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, eventsCollectionPath);
-  }
-
-  // 3. Sync active rosterItems for this user
-  const rosterCollectionPath = 'rosterItems';
-  try {
-    const existingRosterQuery = query(
-      collection(db, 'rosterItems'),
-      where('ownerId', '==', user.uid)
-    );
-    const existingRosterSnap = await getDocs(existingRosterQuery);
-    for (const docSnap of existingRosterSnap.docs) {
-      await deleteDoc(doc(db, 'rosterItems', docSnap.id));
-    }
-
-    for (let i = 0; i < snapshot.roster.length; i++) {
-      const r = snapshot.roster[i];
-      const rosterDocId = sanitizeValidId(`${uid}_role_${i}`, 'role');
-      await setDoc(doc(db, 'rosterItems', rosterDocId), {
-        ownerId: user.uid,
-        templateId: 'active',
-        templateName: 'Baseline 200 Pax Roster (Active)',
-        role: (r.role || 'Operational Staff').slice(0, 120),
-        headcount: Math.min(50, Math.max(0, Number(r.headcount) || 0)),
-        hours: Math.min(24, Math.max(0, Number(r.hours) || 0)),
-        rate: Math.min(500, Math.max(0, Number(r.rate) || 0)),
-        hasSuper: Boolean(r.hasSuper),
-        notes: (r.notes || '').slice(0, 300),
-        sortOrder: i,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, rosterCollectionPath);
-  }
+  // 3. Sync active rosterItems for this user using atomic writeBatch
+  const rosterSaved = await syncRosterToFirestore(snapshot.roster);
 
   return {
-    eventsSaved: snapshot.events.length,
-    rosterSaved: snapshot.roster.length,
+    eventsSaved,
+    rosterSaved,
   };
 }
 
@@ -1487,33 +1638,9 @@ export async function loadWorkspaceFromFirestore(): Promise<Partial<CloudWorkspa
     handleFirestoreError(error, OperationType.GET, `workspaceConfigs/${uid}`);
   }
 
-  try {
-    const eventsQuery = query(
-      collection(db, 'pipelineEvents'),
-      where('ownerId', '==', user.uid)
-    );
-    const eventsSnap = await getDocs(eventsQuery);
-    if (!eventsSnap.empty) {
-      const loadedEvents = eventsSnap.docs
-        .map((d) => d.data())
-        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
-        .map((d) => ({
-          date: String(d.date || 'TBC'),
-          title: String(d.title || 'Event'),
-          type: (d.type === 'owned' ? 'owned' : 'promoter') as 'owned' | 'promoter',
-          format: String(d.format || 'Promoter Hosted'),
-          pax: Number(d.pax) || 0,
-          barGross: Number(d.barGross) || 0,
-          clip: Number(d.clip) || 0,
-          ticketRev: Number(d.ticketRev) || 0,
-          deposit: Number(d.deposit) || 0,
-          wages: Number(d.wages) || 0,
-          surplus: Number(d.surplus) || 0,
-        }));
-      result.events = loadedEvents;
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'pipelineEvents');
+  const loadedEvents = await pullEventsFromFirestoreServer();
+  if (loadedEvents && loadedEvents.length > 0) {
+    result.events = loadedEvents;
   }
 
   try {
