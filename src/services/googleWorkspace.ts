@@ -287,26 +287,14 @@ export async function signInWithGISFallback(): Promise<string> {
 }
 
 export async function signIn(): Promise<string | null> {
-  try {
-    const provider = new GoogleAuthProvider();
-    SCOPES.forEach((s) => provider.addScope(s));
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    cachedToken = credential?.accessToken ?? null;
-    tokenExpiry = Date.now() + 50 * 60 * 1000; // ~50 min buffer for 1-hr token
-    return cachedToken;
-  } catch (err: any) {
-    const code = err?.code || '';
-    const msg = err?.message || '';
-    if (
-      code === 'auth/unauthorized-domain' ||
-      msg.includes('auth/unauthorized-domain')
-    ) {
-      // Automatically fall back to direct Google Identity Services (GIS) OAuth2 Token Client
-      return await signInWithGISFallback();
-    }
-    throw err;
-  }
+  const provider = new GoogleAuthProvider();
+  SCOPES.forEach((s) => provider.addScope(s));
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const result = await signInWithPopup(auth, provider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  cachedToken = credential?.accessToken ?? null;
+  tokenExpiry = Date.now() + 50 * 60 * 1000; // ~50 min buffer for 1-hr token
+  return cachedToken;
 }
 
 export async function getAccessToken(): Promise<string> {
