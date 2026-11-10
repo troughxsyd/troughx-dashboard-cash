@@ -2,9 +2,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --color-slate-*: initial;
+
   --font-sans: 'Poppins', system-ui, -apple-system, sans-serif;
   --font-poppins: 'Poppins', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-mono: 'Inconsolata', monospace;
+  --font-serif: 'Inconsolata', monospace;
+  --font-inconsolata: 'Inconsolata', monospace;
 
   --color-trough-yellow: #FFCC00;
   --color-trough-yellowHover: #E5B800;
@@ -14,15 +18,15 @@
   --color-trough-cardDark: #2B2B2B;
   --color-trough-cardBorder: #3D3D3D;
   --color-trough-steelGrey: #333333;
-  --color-trough-steelSlate: #4A5568;
-  --color-trough-muted: #94A3B8;
+  --color-trough-steelLight: #4D4D4D;
+  --color-trough-muted: #A3A3A3;
 }
 
 @layer base {
   body {
     font-family: 'Poppins', sans-serif;
     background-color: rgb(34, 34, 34);
-    color: #F8FAFC;
+    color: #F5F5F5;
   }
 }
 
@@ -37,10 +41,10 @@ input[type=range] {
   height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: #1E202C;
+  background: #222222;
 }
 ::-webkit-scrollbar-thumb {
-  background: #4A5568;
+  background: #4D4D4D;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -51,7 +55,7 @@ input[type=range] {
 @media print {
   body {
     background-color: #FFFFFF !important;
-    color: #111827 !important;
+    color: #171717 !important;
   }
   .no-print {
     display: none !important;
@@ -60,9 +64,9 @@ input[type=range] {
     display: block !important;
   }
   .bg-trough-cardDark {
-    background-color: #F8FAFC !important;
-    border-color: #E2E8F0 !important;
-    color: #0F172A !important;
+    background-color: #F5F5F5 !important;
+    border-color: #E5E5E5 !important;
+    color: #171717 !important;
   }
 }
 
@@ -81,7 +85,7 @@ input[type=range] {
   box-sizing: border-box;
   color: #1f1f1f;
   cursor: pointer;
-  font-family: 'Roboto', arial, sans-serif;
+  font-family: 'Inconsolata', monospace;
   font-size: 14px;
   height: 40px;
   letter-spacing: 0.25px;
@@ -123,7 +127,7 @@ input[type=range] {
 .gsi-material-button .gsi-material-button-contents {
   -webkit-flex-grow: 1;
   flex-grow: 1;
-  font-family: 'Roboto', arial, sans-serif;
+  font-family: 'Inconsolata', monospace;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,7 +161,7 @@ input[type=range] {
 
 .gsi-material-button:not(:disabled):active .gsi-material-button-state,
 .gsi-material-button:not(:disabled):focus .gsi-material-button-state {
-  background-color: #303030;
+  background-color: #191919;
   opacity: 12%;
 }
 
@@ -167,7 +171,7 @@ input[type=range] {
 }
 
 .gsi-material-button:not(:disabled):hover .gsi-material-button-state {
-  background-color: #303030;
+  background-color: #191919;
   opacity: 8%;
 }
 

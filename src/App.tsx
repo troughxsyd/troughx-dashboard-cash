@@ -5,7 +5,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { auth, signIn, signOut } from './services/googleWorkspace';
+import {
+  auth,
+  signIn,
+  signOut,
+  onFallbackUserChanged,
+} from './services/googleWorkspace';
 import {
   WorkspaceSyncPanel,
   GoogleSignInButton,
@@ -42,11 +47,28 @@ export interface SavedRosterTemplate {
   items: RosterItem[];
 }
 
+export interface OwnedDirectOverheads {
+  talentCost: number;
+  productionCost: number;
+  marketingCost: number;
+  otherCost: number;
+  merchantFeePct: number;
+}
+
 const STORAGE_KEYS = {
   EVENTS: 'trough_x_saved_events_v3',
   ROSTER: 'trough_x_saved_roster_v4',
   ROSTER_SUPER: 'trough_x_saved_roster_super_v4',
   ROSTER_TEMPLATES: 'trough_x_roster_templates_v4',
+  DIRECT_OVERHEADS: 'trough_x_direct_overheads_v1',
+};
+
+const DEFAULT_OWNED_OVERHEADS: OwnedDirectOverheads = {
+  talentCost: 900,
+  productionCost: 450,
+  marketingCost: 400,
+  otherCost: 0,
+  merchantFeePct: 1.5,
 };
 
 const DEFAULT_ROSTER: RosterItem[] = [
@@ -273,6 +295,57 @@ export default function App() {
   const [simCogsRate, setSimCogsRate] = useState<number>(22.0);
   const [simPromoterDeposit, setSimPromoterDeposit] = useState<boolean>(true);
 
+  // Editable Direct Overheads for Trough-Owned Events (Loaded from localStorage)
+  const [ownedOverheads, setOwnedOverheads] = useState<OwnedDirectOverheads>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DIRECT_OVERHEADS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            talentCost: Number(parsed.talentCost ?? DEFAULT_OWNED_OVERHEADS.talentCost),
+            productionCost: Number(
+              parsed.productionCost ?? DEFAULT_OWNED_OVERHEADS.productionCost
+            ),
+            marketingCost: Number(
+              parsed.marketingCost ?? DEFAULT_OWNED_OVERHEADS.marketingCost
+            ),
+            otherCost: Number(parsed.otherCost ?? DEFAULT_OWNED_OVERHEADS.otherCost),
+            merchantFeePct: Number(
+              parsed.merchantFeePct ?? DEFAULT_OWNED_OVERHEADS.merchantFeePct
+            ),
+          };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return { ...DEFAULT_OWNED_OVERHEADS };
+  });
+
+  const updateOwnedOverhead = (field: keyof OwnedDirectOverheads, value: number) => {
+    const cleanVal = Math.max(0, Number.isNaN(value) ? 0 : value);
+    setOwnedOverheads((prev) => {
+      const next = { ...prev, [field]: cleanVal };
+      try {
+        localStorage.setItem(STORAGE_KEYS.DIRECT_OVERHEADS, JSON.stringify(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+  };
+
+  const resetOwnedOverheads = () => {
+    const defaults = { ...DEFAULT_OWNED_OVERHEADS };
+    setOwnedOverheads(defaults);
+    try {
+      localStorage.setItem(STORAGE_KEYS.DIRECT_OVERHEADS, JSON.stringify(defaults));
+    } catch {
+      // Ignore
+    }
+  };
+
   // Simulator Linked Forthcoming Event Editor State
   const [editingEventIndex, setEditingEventIndex] = useState<number | null>(null);
   const [simEventDate, setSimEventDate] = useState<string>('20/03/2027');
@@ -458,10 +531,20 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsubFb = onAuthStateChanged(auth, (u) => {
+      if (u) setUser(u);
     });
-    return () => unsub();
+    const unsubGis = onFallbackUserChanged((fallbackU) => {
+      if (fallbackU) {
+        setUser(fallbackU as unknown as User);
+      } else if (!auth.currentUser) {
+        setUser(null);
+      }
+    });
+    return () => {
+      unsubFb();
+      unsubGis();
+    };
   }, []);
 
   const handleSignIn = async () => {
@@ -559,6 +642,7 @@ export default function App() {
     setSimCogsRate(22.0);
     setSimPromoterDeposit(true);
     setSimMode('owned');
+    resetOwnedOverheads();
     setSimSaveNotice(null);
   };
 
@@ -604,13 +688,17 @@ export default function App() {
       baseRosterWages += count * item.hours * item.rate;
     });
 
-    const talentCost =
-      simMode === 'owned' ? (simPax > 240 ? 1200 : simPax > 150 ? 900 : 600) : 0;
+    const feeRate =
+      simMode === 'owned' ? ownedOverheads.merchantFeePct / 100 : 0.015;
+    const talentCost = simMode === 'owned' ? ownedOverheads.talentCost : 0;
     const productionCost =
-      simMode === 'owned' ? (simPax > 240 ? 600 : 450) : 150;
-    const terminalFees = grossTurnover * 0.015;
-    const marketingCost = simMode === 'owned' ? 400 : 0;
-    const totalOverheads = talentCost + productionCost + terminalFees + marketingCost;
+      simMode === 'owned' ? ownedOverheads.productionCost : 150;
+    const marketingCost = simMode === 'owned' ? ownedOverheads.marketingCost : 0;
+    const otherCost = simMode === 'owned' ? ownedOverheads.otherCost : 0;
+    const terminalFees = grossTurnover * feeRate;
+    const fixedDirectOverheads =
+      talentCost + productionCost + marketingCost + otherCost;
+    const totalOverheads = fixedDirectOverheads + terminalFees;
 
     const netSurplus = grossMargin - baseRosterWages - totalOverheads;
     const wageRatio = grossTurnover > 0 ? (baseRosterWages / grossTurnover) * 100 : 0;
@@ -631,8 +719,11 @@ export default function App() {
       baseRosterWages,
       talentCost,
       productionCost,
-      terminalFees,
       marketingCost,
+      otherCost,
+      terminalFees,
+      fixedDirectOverheads,
+      totalOverheads,
       netSurplus,
       wageRatio,
       marginRatio,
@@ -647,6 +738,7 @@ export default function App() {
     simPromoterDeposit,
     simMode,
     roster,
+    ownedOverheads,
   ]);
 
   // Roster Calculations
@@ -842,6 +934,191 @@ export default function App() {
     };
   }, [dealPax, dealClip, dealSpend, rosterSummary.grossWages]);
 
+  // Operating Models Performance Matrix (Dynamically Recalculated from Roster & Owned Direct Overheads)
+  const performanceMatrix = useMemo(() => {
+    const baseWages = rosterSummary.grossWages;
+    let peakWages = 0;
+    roster.forEach((item) => {
+      let count = item.headcount;
+      if (item.role.includes('Crowd Control') || item.role.includes('Security')) {
+        count += 1;
+      } else if (item.role.includes('Bartender')) {
+        count += 1;
+      }
+      peakWages += count * item.hours * item.rate;
+    });
+
+    const ownedFixedOverheads =
+      ownedOverheads.talentCost +
+      ownedOverheads.productionCost +
+      ownedOverheads.marketingCost +
+      ownedOverheads.otherCost;
+    const feeRate = ownedOverheads.merchantFeePct / 100;
+
+    // 1. Actuals (11 Sept Historical) — 150 Pax
+    const actuals = {
+      id: 'actuals',
+      name: 'Actuals (11 Sept Historical)',
+      dotClass: 'bg-neutral-400',
+      pax: 150,
+      gross: 4881.0,
+      beverageCogs: 857.0,
+      consumables: 0,
+      totalCogs: 857.0,
+      wages: 1290.0,
+      overheads: 90.0,
+      labourPct: (1290.0 / 4881.0) * 100,
+      surplus: 2644.0,
+    };
+
+    // 2. Conservative Owned Party — 120 Pax
+    const consGross = 6060.0;
+    const consBevCogs = 528.0;
+    const consConsumables = 100.0;
+    const consTotalCogs = consBevCogs + consConsumables;
+    const consOverheads = ownedFixedOverheads + consGross * feeRate;
+    const consSurplus = consGross - consTotalCogs - baseWages - consOverheads;
+    const conservativeOwned = {
+      id: 'conservative-owned',
+      name: 'Conservative Owned Party',
+      dotClass: 'bg-blue-400',
+      pax: 120,
+      gross: consGross,
+      beverageCogs: consBevCogs,
+      consumables: consConsumables,
+      totalCogs: consTotalCogs,
+      wages: baseWages,
+      overheads: consOverheads,
+      labourPct: (baseWages / consGross) * 100,
+      surplus: consSurplus,
+    };
+
+    // 3. Target Owned Party (Baseline) — 200 Pax
+    const targetGross = 11000.0;
+    const targetBevCogs = 990.0;
+    const targetConsumables = 150.0;
+    const targetTotalCogs = targetBevCogs + targetConsumables;
+    const targetOverheads = ownedFixedOverheads + targetGross * feeRate;
+    const targetSurplus =
+      targetGross - targetTotalCogs - baseWages - targetOverheads;
+    const targetOwned = {
+      id: 'target-owned',
+      name: 'Target Owned Party (Baseline)',
+      dotClass: 'bg-trough-yellow',
+      pax: 200,
+      gross: targetGross,
+      beverageCogs: targetBevCogs,
+      consumables: targetConsumables,
+      totalCogs: targetTotalCogs,
+      wages: baseWages,
+      overheads: targetOverheads,
+      labourPct: (baseWages / targetGross) * 100,
+      surplus: targetSurplus,
+      marginPct: (targetSurplus / targetGross) * 100,
+    };
+
+    // 4. Peak Sell-Out Owned Party — 280 Pax
+    const peakGross = 18440.0;
+    const peakBevCogs = 1725.0;
+    const peakConsumables = 200.0;
+    const peakTotalCogs = peakBevCogs + peakConsumables;
+    const peakOverheads = ownedFixedOverheads + peakGross * feeRate;
+    const peakSurplus = peakGross - peakTotalCogs - peakWages - peakOverheads;
+    const peakOwned = {
+      id: 'peak-owned',
+      name: 'Peak Sell-Out Owned Party',
+      dotClass: 'bg-purple-400',
+      pax: 280,
+      gross: peakGross,
+      beverageCogs: peakBevCogs,
+      consumables: peakConsumables,
+      totalCogs: peakTotalCogs,
+      wages: peakWages,
+      overheads: peakOverheads,
+      labourPct: (peakWages / peakGross) * 100,
+      surplus: peakSurplus,
+    };
+
+    // 5. Promoter Hosted Target ($5 Clip) — 200 Pax
+    const promTargetGross = 6000.0;
+    const promTargetBevCogs = 990.0;
+    const promTargetConsumables = 150.0;
+    const promTargetTotalCogs = promTargetBevCogs + promTargetConsumables;
+    const promTargetOverheads = 150.0 + promTargetGross * 0.015;
+    const promTargetSurplus =
+      promTargetGross - promTargetTotalCogs - baseWages - promTargetOverheads;
+    const promoterTarget = {
+      id: 'promoter-target',
+      name: 'Promoter Hosted Target ($5 Clip)',
+      dotClass: 'bg-emerald-400',
+      pax: 200,
+      gross: promTargetGross,
+      beverageCogs: promTargetBevCogs,
+      consumables: promTargetConsumables,
+      totalCogs: promTargetTotalCogs,
+      wages: baseWages,
+      overheads: promTargetOverheads,
+      labourPct: (baseWages / promTargetGross) * 100,
+      surplus: promTargetSurplus,
+    };
+
+    // 6. Promoter Hosted Low Attendance — 120 Pax
+    const promLowGross = 3300.0;
+    const promLowBevCogs = 528.0;
+    const promLowConsumables = 100.0;
+    const promLowTotalCogs = promLowBevCogs + promLowConsumables;
+    const promLowOverheads = 150.0 + promLowGross * 0.015;
+    const promLowSurplus =
+      promLowGross - promLowTotalCogs - baseWages - promLowOverheads;
+    const promoterLow = {
+      id: 'promoter-low',
+      name:
+        promLowSurplus >= 0
+          ? 'Promoter Hosted Low Attendance'
+          : 'Promoter Hosted Under-Breakeven',
+      dotClass: promLowSurplus >= 0 ? 'bg-amber-400' : 'bg-red-400',
+      pax: 120,
+      gross: promLowGross,
+      beverageCogs: promLowBevCogs,
+      consumables: promLowConsumables,
+      totalCogs: promLowTotalCogs,
+      wages: baseWages,
+      overheads: promLowOverheads,
+      labourPct: (baseWages / promLowGross) * 100,
+      surplus: promLowSurplus,
+    };
+
+    // Promoter Breakeven at Baseline ($5 Clip + $22.50 Bar Spend + $2.50 Cloak)
+    const baselineNetMarginPerHead = 5.0 + 22.5 * (1 - 0.22) + 2.5; // $25.05/head
+    const fixedPromoterCost = baseWages + 300.0;
+    const promoterBreakevenNoDeposit = Math.ceil(
+      fixedPromoterCost / baselineNetMarginPerHead
+    );
+    const promoterBreakevenWithDeposit = Math.ceil(
+      Math.max(0, fixedPromoterCost - 550.0) / baselineNetMarginPerHead
+    );
+
+    return {
+      ownedFixedOverheads,
+      actuals,
+      conservativeOwned,
+      targetOwned,
+      peakOwned,
+      promoterTarget,
+      promoterLow,
+      rows: [
+        actuals,
+        conservativeOwned,
+        targetOwned,
+        peakOwned,
+        promoterTarget,
+        promoterLow,
+      ],
+      promoterBreakevenNoDeposit,
+      promoterBreakevenWithDeposit,
+    };
+  }, [roster, rosterSummary.grossWages, ownedOverheads]);
+
   // Filtered Pipeline Events preserving original index in `events`
   const filteredEventsWithIndex = useMemo(() => {
     return events
@@ -902,34 +1179,17 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#222222] text-slate-100 antialiased selection:bg-trough-yellow selection:text-black">
+    <div className="min-h-screen flex flex-col bg-[#222222] text-neutral-100 antialiased selection:bg-trough-yellow selection:text-black">
       {/* TOP HEADER / NAV */}
       <header className="no-print border-b border-trough-cardBorder bg-[#222222]/95 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
-          {/* Brand & Location */}
-          <div className="flex items-center space-x-3.5">
+          {/* Brand Logo */}
+          <div className="flex items-center space-x-3">
             <img
               src="https://cdn.prod.website-files.com/69efc0068b16fc7a61e4f47e/6ae80e7d51e9ca54c2e6f5d4_TROUGH-X-LOGO.png"
               alt="Trough X Logo"
               className="h-10 w-auto object-contain rounded-lg"
             />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-lg tracking-tight text-white">
-                  TROUGH X{' '}
-                  <span className="text-trough-yellow text-xs px-2 py-0.5 rounded-full bg-trough-yellow/10 border border-trough-yellow/30 font-medium">
-                    SYDNEY
-                  </span>
-                </h1>
-                <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono hidden sm:inline-block">
-                  LIVE MODEL v3.2
-                </span>
-              </div>
-              <p className="text-xs text-trough-muted flex items-center gap-1.5">
-                <i className="fa-solid fa-location-dot text-trough-yellow"></i> 273 Crown St,
-                Surry Hills &bull; Cap: 300 Max (Basement 60)
-              </p>
-            </div>
           </div>
 
           {/* Action Buttons & Mode Pill */}
@@ -949,7 +1209,7 @@ export default function App() {
 
             <button
               onClick={toggleSimModeQuick}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelSlate transition border border-slate-600 flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelLight transition border border-neutral-600 flex items-center gap-1.5 cursor-pointer"
             >
               <i className="fa-solid fa-arrows-rotate text-trough-yellow"></i>
               <span>
@@ -961,7 +1221,7 @@ export default function App() {
 
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition flex items-center gap-1.5 cursor-pointer"
             >
               <i className="fa-solid fa-print"></i>
               <span>Print / PDF</span>
@@ -977,7 +1237,7 @@ export default function App() {
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'dashboard'
                   ? 'text-black bg-trough-yellow font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <i className="fa-solid fa-chart-pie"></i> Executive Dashboard
@@ -987,7 +1247,7 @@ export default function App() {
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'simulator'
                   ? 'text-black bg-trough-yellow font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <i className="fa-solid fa-sliders"></i> Budget Simulator
@@ -997,7 +1257,7 @@ export default function App() {
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'wages'
                   ? 'text-black bg-trough-yellow font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <i className="fa-solid fa-users-gear"></i> Wage Calculator (IFA)
@@ -1007,7 +1267,7 @@ export default function App() {
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'promoter'
                   ? 'text-black bg-trough-yellow font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <i className="fa-solid fa-handshake-simple"></i> Promoter Deal Analyzer
@@ -1017,7 +1277,7 @@ export default function App() {
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'calendar'
                   ? 'text-black bg-trough-yellow font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
               <i className="fa-solid fa-calendar-days"></i> Forthcoming Events
@@ -1032,7 +1292,7 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <section className="space-y-6">
             {/* Operational Notice Bar */}
-            <div className="bg-gradient-to-r from-trough-cardDark to-[#242738] border-l-4 border-trough-yellow p-4 rounded-xl shadow flex flex-col md:flex-row md:items-center justify-between gap-3 border border-trough-cardBorder">
+            <div className="bg-gradient-to-r from-trough-cardDark to-[#191919] border-l-4 border-trough-yellow p-4 rounded-xl shadow flex flex-col md:flex-row md:items-center justify-between gap-3 border border-trough-cardBorder">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 bg-trough-yellow/10 rounded-lg text-trough-yellow text-lg">
                   <i className="fa-solid fa-shield-halved"></i>
@@ -1047,20 +1307,12 @@ export default function App() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 self-start md:self-auto">
-                <span className="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono">
-                  1:100 Security Ratio
-                </span>
-                <span className="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-trough-yellow font-mono">
-                  Medic Mandatory
-                </span>
-              </div>
             </div>
 
             {/* KPI Executive Cards Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Target Gross */}
-              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-slate-600 transition shadow-sm">
+              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-neutral-600 transition shadow-sm">
                 <div className="flex justify-between items-start">
                   <span className="text-xs font-medium text-trough-muted uppercase tracking-wider">
                     Target Gross (200 Pax)
@@ -1095,19 +1347,20 @@ export default function App() {
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-2xl sm:text-3xl font-bold tracking-tight text-trough-yellow">
-                    $4,475
+                    ${Math.round(performanceMatrix.targetOwned.surplus).toLocaleString()}
                   </span>
                   <span className="text-[11px] text-trough-yellow font-medium">
-                    40.7% Margin
+                    {performanceMatrix.targetOwned.marginPct.toFixed(1)}% Margin
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-trough-muted">
-                  Gross Margin less Wages &amp; Overheads
+                  Gross Margin less ${formatMoney(performanceMatrix.targetOwned.wages)} Wages &amp; $
+                  {formatMoney(performanceMatrix.targetOwned.overheads)} Overheads
                 </p>
               </div>
 
               {/* Wage Bill Ratio */}
-              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-slate-600 transition shadow-sm">
+              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-neutral-600 transition shadow-sm">
                 <div className="flex justify-between items-start">
                   <span className="text-xs font-medium text-trough-muted uppercase tracking-wider">
                     Labour Cost Ratio
@@ -1118,19 +1371,19 @@ export default function App() {
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                    29.4%
+                    {performanceMatrix.targetOwned.labourPct.toFixed(1)}%
                   </span>
                   <span className="text-[11px] text-emerald-400 font-medium">
                     &le; 30% Benchmark
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-trough-muted">
-                  $3,235.00 Total Direct Shift Wages
+                  ${formatMoney(performanceMatrix.targetOwned.wages)} Total Direct Shift Wages
                 </p>
               </div>
 
               {/* Promoter Breakeven */}
-              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-slate-600 transition shadow-sm">
+              <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 hover:border-neutral-600 transition shadow-sm">
                 <div className="flex justify-between items-start">
                   <span className="text-xs font-medium text-trough-muted uppercase tracking-wider">
                     Promoter Breakeven
@@ -1141,10 +1394,10 @@ export default function App() {
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                    144 Pax
+                    {performanceMatrix.promoterBreakevenNoDeposit} Pax
                   </span>
                   <span className="text-[11px] text-amber-300 font-mono">
-                    121 w/ Deposit
+                    {performanceMatrix.promoterBreakevenWithDeposit} w/ Deposit
                   </span>
                 </div>
                 <p className="mt-1 text-[11px] text-trough-muted">
@@ -1168,20 +1421,53 @@ export default function App() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="inline-flex items-center gap-1 text-slate-300">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#4A5568]"></span> Gross
+                    <span className="inline-flex items-center gap-1 text-neutral-300">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#4D4D4D]"></span> Gross
                     </span>
-                    <span className="inline-flex items-center gap-1 text-slate-300">
+                    <span className="inline-flex items-center gap-1 text-neutral-300">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Wages
                     </span>
-                    <span className="inline-flex items-center gap-1 text-slate-300">
+                    <span className="inline-flex items-center gap-1 text-neutral-300">
                       <span className="w-2.5 h-2.5 rounded-full bg-trough-yellow"></span> Surplus
                     </span>
                   </div>
                 </div>
 
                 {/* SVG Bar Chart replicating Chart.js Scenario Comparison */}
-                <ScenarioBarChart />
+                <ScenarioBarChart
+                  scenarios={[
+                    {
+                      label: 'Actual (11 Sept)',
+                      gross: Math.round(performanceMatrix.actuals.gross),
+                      wages: Math.round(performanceMatrix.actuals.wages),
+                      surplus: Math.round(performanceMatrix.actuals.surplus),
+                    },
+                    {
+                      label: 'Owned (120 Pax)',
+                      gross: Math.round(performanceMatrix.conservativeOwned.gross),
+                      wages: Math.round(performanceMatrix.conservativeOwned.wages),
+                      surplus: Math.round(performanceMatrix.conservativeOwned.surplus),
+                    },
+                    {
+                      label: 'Owned (200 Pax)',
+                      gross: Math.round(performanceMatrix.targetOwned.gross),
+                      wages: Math.round(performanceMatrix.targetOwned.wages),
+                      surplus: Math.round(performanceMatrix.targetOwned.surplus),
+                    },
+                    {
+                      label: 'Owned Peak (280)',
+                      gross: Math.round(performanceMatrix.peakOwned.gross),
+                      wages: Math.round(performanceMatrix.peakOwned.wages),
+                      surplus: Math.round(performanceMatrix.peakOwned.surplus),
+                    },
+                    {
+                      label: 'Promoter (200)',
+                      gross: Math.round(performanceMatrix.promoterTarget.gross),
+                      wages: Math.round(performanceMatrix.promoterTarget.wages),
+                      surplus: Math.round(performanceMatrix.promoterTarget.surplus),
+                    },
+                  ]}
+                />
               </div>
 
               {/* Cost Allocation Doughnut Chart (1 col) */}
@@ -1197,163 +1483,278 @@ export default function App() {
                 </div>
 
                 <div className="relative h-56 w-full my-auto flex items-center justify-center">
-                  <CostAllocationDoughnut />
+                  <CostAllocationDoughnut
+                    surplus={Math.max(0, performanceMatrix.targetOwned.surplus)}
+                    wages={performanceMatrix.targetOwned.wages}
+                    overheads={performanceMatrix.targetOwned.overheads}
+                    cogs={performanceMatrix.targetOwned.totalCogs}
+                    gross={performanceMatrix.targetOwned.gross}
+                  />
                 </div>
 
-                <div className="pt-3 border-t border-slate-800 text-[11px] grid grid-cols-2 gap-2 text-trough-muted">
+                <div className="pt-3 border-t border-neutral-800 text-[11px] grid grid-cols-2 gap-2 text-trough-muted">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded bg-trough-yellow"></span> Net Surplus: 40.7%
+                    <span className="w-2 h-2 rounded bg-trough-yellow"></span> Net Surplus:{' '}
+                    {performanceMatrix.targetOwned.marginPct.toFixed(1)}%
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded bg-rose-500"></span> Direct Wages: 29.4%
+                    <span className="w-2 h-2 rounded bg-rose-500"></span> Direct Wages:{' '}
+                    {performanceMatrix.targetOwned.labourPct.toFixed(1)}%
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded bg-blue-500"></span> Production: 19.5%
+                    <span className="w-2 h-2 rounded bg-blue-500"></span> Overheads:{' '}
+                    {(
+                      (performanceMatrix.targetOwned.overheads /
+                        performanceMatrix.targetOwned.gross) *
+                      100
+                    ).toFixed(1)}
+                    %
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded bg-emerald-500"></span> Bar COGS: 10.4%
+                    <span className="w-2 h-2 rounded bg-emerald-500"></span> Bar COGS:{' '}
+                    {(
+                      (performanceMatrix.targetOwned.totalCogs /
+                        performanceMatrix.targetOwned.gross) *
+                      100
+                    ).toFixed(1)}
+                    %
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Historical Actuals vs Benchmark Table */}
-            <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 overflow-hidden shadow-sm space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div>
                   <h3 className="font-bold text-sm text-white flex items-center gap-2">
                     <i className="fa-solid fa-scale-unbalanced-flip text-trough-yellow"></i>{' '}
                     Operating Models Performance Matrix
                   </h3>
                   <p className="text-xs text-trough-muted">
-                    Cross-reconciliation across attendance levels and licensing limits
+                    Dynamically recalculated across attendance levels using active IFA Roster ($
+                    {formatMoney(rosterSummary.grossWages)} base wages) &amp; Trough-Owned Direct
+                    Overheads
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={resetOwnedOverheads}
+                  className="self-start lg:self-auto text-xs text-trough-yellow hover:underline flex items-center gap-1.5 cursor-pointer font-mono"
+                >
+                  <i className="fa-solid fa-rotate-left"></i> Reset Overheads ($1,750 Base)
+                </button>
               </div>
+
+              {/* Editable Trough-Owned Direct Overheads Bar */}
+              <div className="bg-[#191919] border border-neutral-800 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-trough-yellow flex items-center gap-1.5">
+                    <i className="fa-solid fa-sliders"></i> Editable Direct Overheads (Trough-Owned
+                    Events)
+                  </span>
+                  <span className="text-[11px] font-mono text-neutral-300">
+                    Fixed Overheads:{' '}
+                    <strong className="text-white">
+                      ${formatMoney(performanceMatrix.ownedFixedOverheads)}
+                    </strong>{' '}
+                    +{' '}
+                    <strong className="text-white">
+                      {ownedOverheads.merchantFeePct.toFixed(1)}%
+                    </strong>{' '}
+                    EFTPOS Fee
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                  <div className="bg-[#222222] border border-neutral-800 rounded-lg p-2">
+                    <label className="block text-[10px] text-neutral-400 uppercase">
+                      DJ &amp; Talent ($)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <span className="text-xs font-mono text-neutral-400 mr-1">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={ownedOverheads.talentCost}
+                        onChange={(e) =>
+                          updateOwnedOverhead('talentCost', parseFloat(e.target.value) || 0)
+                        }
+                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#222222] border border-neutral-800 rounded-lg p-2">
+                    <label className="block text-[10px] text-neutral-400 uppercase">
+                      Sound / AV &amp; Decor ($)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <span className="text-xs font-mono text-neutral-400 mr-1">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="25"
+                        value={ownedOverheads.productionCost}
+                        onChange={(e) =>
+                          updateOwnedOverhead('productionCost', parseFloat(e.target.value) || 0)
+                        }
+                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#222222] border border-neutral-800 rounded-lg p-2">
+                    <label className="block text-[10px] text-neutral-400 uppercase">
+                      Marketing &amp; Posters ($)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <span className="text-xs font-mono text-neutral-400 mr-1">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="25"
+                        value={ownedOverheads.marketingCost}
+                        onChange={(e) =>
+                          updateOwnedOverhead('marketingCost', parseFloat(e.target.value) || 0)
+                        }
+                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#222222] border border-neutral-800 rounded-lg p-2">
+                    <label className="block text-[10px] text-neutral-400 uppercase">
+                      Other Direct ($)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <span className="text-xs font-mono text-neutral-400 mr-1">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="25"
+                        value={ownedOverheads.otherCost}
+                        onChange={(e) =>
+                          updateOwnedOverhead('otherCost', parseFloat(e.target.value) || 0)
+                        }
+                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#222222] border border-neutral-800 rounded-lg p-2 col-span-2 sm:col-span-1">
+                    <label className="block text-[10px] text-neutral-400 uppercase">
+                      EFTPOS Terminal (%)
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={ownedOverheads.merchantFeePct}
+                        onChange={(e) =>
+                          updateOwnedOverhead('merchantFeePct', parseFloat(e.target.value) || 0)
+                        }
+                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
+                      />
+                      <span className="text-xs font-mono text-neutral-400 ml-1">%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+                  <thead className="bg-[#202020] text-neutral-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
                     <tr>
                       <th className="py-3 px-3.5">Model Scenario</th>
                       <th className="py-3 px-3.5">Patron Count</th>
                       <th className="py-3 px-3.5">Gross Revenue</th>
-                      <th className="py-3 px-3.5">Beverage COGS</th>
+                      <th className="py-3 px-3.5">Beverage &amp; Bar COGS</th>
                       <th className="py-3 px-3.5">Total Direct Wages</th>
+                      <th className="py-3 px-3.5">Direct Overheads</th>
                       <th className="py-3 px-3.5">Labour %</th>
                       <th className="py-3 px-3.5 text-right font-bold text-trough-yellow">
                         Net Operating Surplus
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80 text-slate-200">
-                    <tr className="hover:bg-slate-800/40">
-                      <td className="py-3 px-3.5 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-slate-400"></span> Actuals (11 Sept
-                        Historical)
-                      </td>
-                      <td className="py-3 px-3.5 font-mono">150 Pax</td>
-                      <td className="py-3 px-3.5 font-mono">$4,881.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($857.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($1,290.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
-                          26.4%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">
-                        +$2,644.00
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-slate-800/40">
-                      <td className="py-3 px-3.5 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-400"></span> Conservative Owned
-                        Party
-                      </td>
-                      <td className="py-3 px-3.5 font-mono">120 Pax</td>
-                      <td className="py-3 px-3.5 font-mono">$6,060.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($528.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($2,560.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
-                          42.2%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">
-                        +$1,472.00
-                      </td>
-                    </tr>
-                    <tr className="bg-trough-yellow/5 border-l-2 border-trough-yellow hover:bg-trough-yellow/10">
-                      <td className="py-3 px-3.5 font-semibold text-white flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-trough-yellow"></span> Target Owned
-                        Party (Baseline)
-                      </td>
-                      <td className="py-3 px-3.5 font-mono font-bold text-white">200 Pax</td>
-                      <td className="py-3 px-3.5 font-mono font-bold text-white">$11,000.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($990.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($3,235.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                          29.4%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow text-sm">
-                        +$4,475.00
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-slate-800/40">
-                      <td className="py-3 px-3.5 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-purple-400"></span> Peak Sell-Out
-                        Owned Party
-                      </td>
-                      <td className="py-3 px-3.5 font-mono">280 Pax</td>
-                      <td className="py-3 px-3.5 font-mono">$18,440.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($1,725.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($3,980.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
-                          21.6%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">
-                        +$9,535.00
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-slate-800/40">
-                      <td className="py-3 px-3.5 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Promoter Hosted
-                        Target ($5 Clip)
-                      </td>
-                      <td className="py-3 px-3.5 font-mono">200 Pax</td>
-                      <td className="py-3 px-3.5 font-mono">$6,000.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($990.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($3,235.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300">
-                          53.9%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">
-                        +$1,385.00
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-slate-800/40">
-                      <td className="py-3 px-3.5 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-400"></span> Promoter Hosted
-                        Under-Breakeven
-                      </td>
-                      <td className="py-3 px-3.5 font-mono">120 Pax</td>
-                      <td className="py-3 px-3.5 font-mono">$3,300.00</td>
-                      <td className="py-3 px-3.5 font-mono text-slate-400">($528.00)</td>
-                      <td className="py-3 px-3.5 font-mono text-rose-300">($3,110.00)</td>
-                      <td className="py-3 px-3.5 font-mono">
-                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">
-                          94.2%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3.5 font-mono text-right font-bold text-rose-400">
-                        -$637.50
-                      </td>
-                    </tr>
+                  <tbody className="divide-y divide-neutral-800/80 text-neutral-200">
+                    {performanceMatrix.rows.map((row) => {
+                      const isBaseline = row.id === 'target-owned';
+                      return (
+                        <tr
+                          key={row.id}
+                          className={
+                            isBaseline
+                              ? 'bg-trough-yellow/5 border-l-2 border-trough-yellow hover:bg-trough-yellow/10'
+                              : 'hover:bg-neutral-800/40'
+                          }
+                        >
+                          <td
+                            className={`py-3 px-3.5 flex items-center gap-2 ${
+                              isBaseline ? 'font-semibold text-white' : 'font-medium'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${row.dotClass}`}></span>{' '}
+                            {row.name}
+                          </td>
+                          <td
+                            className={`py-3 px-3.5 font-mono ${
+                              isBaseline ? 'font-bold text-white' : ''
+                            }`}
+                          >
+                            {row.pax} Pax
+                          </td>
+                          <td
+                            className={`py-3 px-3.5 font-mono ${
+                              isBaseline ? 'font-bold text-white' : ''
+                            }`}
+                          >
+                            ${formatMoney(row.gross)}
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-neutral-400">
+                            (${formatMoney(row.totalCogs)})
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-rose-300">
+                            (${formatMoney(row.wages)})
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-blue-300">
+                            (${formatMoney(row.overheads)})
+                          </td>
+                          <td className="py-3 px-3.5 font-mono">
+                            <span
+                              className={`px-2 py-0.5 rounded ${
+                                row.labourPct > 50
+                                  ? 'bg-red-500/20 text-red-400 font-bold'
+                                  : row.labourPct > 30
+                                  ? 'bg-amber-500/10 text-amber-400'
+                                  : isBaseline
+                                  ? 'bg-emerald-500/20 text-emerald-300 font-bold'
+                                  : 'bg-emerald-500/10 text-emerald-400'
+                              }`}
+                            >
+                              {row.labourPct.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td
+                            className={`py-3 px-3.5 font-mono text-right font-bold ${
+                              row.surplus >= 0
+                                ? isBaseline
+                                  ? 'text-trough-yellow text-sm'
+                                  : 'text-trough-yellow'
+                                : 'text-rose-400'
+                            }`}
+                          >
+                            {row.surplus >= 0
+                              ? `+$${formatMoney(row.surplus)}`
+                              : `-$${formatMoney(Math.abs(row.surplus))}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1366,7 +1767,7 @@ export default function App() {
           <section className="space-y-6">
             {/* FORTHCOMING EVENT LINK & SAVE BAR */}
             <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-trough-yellow/15 border border-trough-yellow/30 flex items-center justify-center text-trough-yellow">
                     <i className="fa-solid fa-calendar-pen"></i>
@@ -1381,7 +1782,7 @@ export default function App() {
                           Editing Event #{editingEventIndex + 1}: {events[editingEventIndex].title}
                         </span>
                       ) : (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700 font-mono">
                           New / Custom Event Mode
                         </span>
                       )}
@@ -1395,7 +1796,7 @@ export default function App() {
 
                 {/* Dropdown to pick an existing Forthcoming Event to edit */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <label className="text-xs text-slate-400">Load Event:</label>
+                  <label className="text-xs text-neutral-400">Load Event:</label>
                   <select
                     value={editingEventIndex !== null ? String(editingEventIndex) : 'new'}
                     onChange={(e) => {
@@ -1409,7 +1810,7 @@ export default function App() {
                         }
                       }
                     }}
-                    className="bg-[#151621] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none max-w-xs"
+                    className="bg-[#1E1E1E] border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none max-w-xs"
                   >
                     <option value="new">+ Create New Forthcoming Event</option>
                     {events.map((ev, idx) => (
@@ -1424,7 +1825,7 @@ export default function App() {
               {/* Event Metadata Inputs (Date, Title, Format) + Save Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                 <div className="sm:col-span-3 space-y-1">
-                  <label className="block text-[11px] text-slate-400 font-medium">
+                  <label className="block text-[11px] text-neutral-400 font-medium">
                     Event Date (DD/MM/YYYY)
                   </label>
                   <input
@@ -1432,12 +1833,12 @@ export default function App() {
                     value={simEventDate}
                     onChange={(e) => setSimEventDate(e.target.value)}
                     placeholder="14/11/2026"
-                    className="w-full bg-[#151621] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
+                    className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
                   />
                 </div>
 
                 <div className="sm:col-span-4 space-y-1">
-                  <label className="block text-[11px] text-slate-400 font-medium">
+                  <label className="block text-[11px] text-neutral-400 font-medium">
                     Event Title &amp; Promoter
                   </label>
                   <input
@@ -1445,12 +1846,12 @@ export default function App() {
                     value={simEventTitle}
                     onChange={(e) => setSimEventTitle(e.target.value)}
                     placeholder="e.g. ACTION by Thick N Juicy"
-                    className="w-full bg-[#151621] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+                    className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
                   />
                 </div>
 
                 <div className="sm:col-span-2 space-y-1">
-                  <label className="block text-[11px] text-slate-400 font-medium">
+                  <label className="block text-[11px] text-neutral-400 font-medium">
                     Format Label
                   </label>
                   <input
@@ -1458,7 +1859,7 @@ export default function App() {
                     value={simEventFormat}
                     onChange={(e) => setSimEventFormat(e.target.value)}
                     placeholder="Owned Hero Night"
-                    className="w-full bg-[#151621] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+                    className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
                   />
                 </div>
 
@@ -1508,7 +1909,7 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Controls Column (5 cols) */}
               <div className="lg:col-span-5 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                   <h3 className="font-bold text-sm text-white flex items-center gap-2">
                     <i className="fa-solid fa-sliders text-trough-yellow"></i> Simulation
                     Parameters
@@ -1526,13 +1927,13 @@ export default function App() {
                   <label className="block text-xs font-semibold text-trough-muted uppercase tracking-wider mb-2">
                     Event Production Mode
                   </label>
-                  <div className="grid grid-cols-2 gap-2 bg-[#12131C] p-1.5 rounded-xl border border-slate-800">
+                  <div className="grid grid-cols-2 gap-2 bg-[#191919] p-1.5 rounded-xl border border-neutral-800">
                     <button
                       onClick={() => setSimMode('owned')}
                       className={`py-2 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         simMode === 'owned'
                           ? 'bg-trough-yellow text-black'
-                          : 'text-slate-300 hover:text-white'
+                          : 'text-neutral-300 hover:text-white'
                       }`}
                     >
                       <i className="fa-solid fa-crown"></i> Trough-Owned Party
@@ -1542,7 +1943,7 @@ export default function App() {
                       className={`py-2 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         simMode === 'promoter'
                           ? 'bg-trough-yellow text-black'
-                          : 'text-slate-300 hover:text-white'
+                          : 'text-neutral-300 hover:text-white'
                       }`}
                     >
                       <i className="fa-solid fa-handshake"></i> Promoter (${simTicketClip.toFixed(2)} Clip)
@@ -1553,8 +1954,8 @@ export default function App() {
                 {/* Attendance Slider */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-slate-300">Expected Attendance</span>
-                    <span className="font-mono font-bold text-trough-yellow bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <span className="font-medium text-neutral-300">Expected Attendance</span>
+                    <span className="font-mono font-bold text-trough-yellow bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
                       {simPax} Pax
                     </span>
                   </div>
@@ -1565,11 +1966,13 @@ export default function App() {
                     step="5"
                     value={simPax}
                     onChange={(e) => setSimPax(parseInt(e.target.value, 10))}
-                    className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                    className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
                     <span>50 Min</span>
-                    <span className="text-amber-400">144 (Breakeven)</span>
+                    <span className="text-amber-400">
+                      {performanceMatrix.promoterBreakevenNoDeposit} (Breakeven)
+                    </span>
                     <span>200 Base</span>
                     <span className="text-rose-400 font-bold">300 (Max Cap)</span>
                   </div>
@@ -1579,8 +1982,8 @@ export default function App() {
                 {simMode === 'owned' && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-slate-300">Average Ticket Price</span>
-                      <span className="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                      <span className="font-medium text-neutral-300">Average Ticket Price</span>
+                      <span className="font-mono font-bold text-white bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
                         ${simTicketPrice.toFixed(2)} AUD
                       </span>
                     </div>
@@ -1591,11 +1994,141 @@ export default function App() {
                       step="1"
                       value={simTicketPrice}
                       onChange={(e) => setSimTicketPrice(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                     />
-                    <p className="text-[10px] text-slate-400">
+                    <p className="text-[10px] text-neutral-400">
                       Net price retained per paid attendee after platform fees.
                     </p>
+                  </div>
+                )}
+
+                {/* Editable Direct Overheads Panel (Visible in Trough-Owned Mode) */}
+                {simMode === 'owned' && (
+                  <div className="p-3.5 rounded-xl bg-[#191919] border border-trough-yellow/30 text-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                      <span className="font-bold text-trough-yellow flex items-center gap-1.5">
+                        <i className="fa-solid fa-file-invoice-dollar"></i> Direct Overheads
+                        (Trough-Owned)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={resetOwnedOverheads}
+                        className="text-[10px] text-neutral-400 hover:text-trough-yellow font-mono cursor-pointer"
+                      >
+                        Reset ($1,750)
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-neutral-400">
+                          DJ &amp; Talent ($)
+                        </label>
+                        <div className="flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2 py-1 focus-within:border-trough-yellow">
+                          <span className="text-neutral-400 font-mono mr-1">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={ownedOverheads.talentCost}
+                            onChange={(e) =>
+                              updateOwnedOverhead(
+                                'talentCost',
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                            className="w-full bg-transparent font-mono font-bold text-white text-xs focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-neutral-400">
+                          Sound/Lighting &amp; Decor ($)
+                        </label>
+                        <div className="flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2 py-1 focus-within:border-trough-yellow">
+                          <span className="text-neutral-400 font-mono mr-1">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="25"
+                            value={ownedOverheads.productionCost}
+                            onChange={(e) =>
+                              updateOwnedOverhead(
+                                'productionCost',
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                            className="w-full bg-transparent font-mono font-bold text-white text-xs focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-neutral-400">
+                          Marketing &amp; Posters ($)
+                        </label>
+                        <div className="flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2 py-1 focus-within:border-trough-yellow">
+                          <span className="text-neutral-400 font-mono mr-1">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="25"
+                            value={ownedOverheads.marketingCost}
+                            onChange={(e) =>
+                              updateOwnedOverhead(
+                                'marketingCost',
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                            className="w-full bg-transparent font-mono font-bold text-white text-xs focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-neutral-400">
+                          Other Direct Overheads ($)
+                        </label>
+                        <div className="flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2 py-1 focus-within:border-trough-yellow">
+                          <span className="text-neutral-400 font-mono mr-1">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="25"
+                            value={ownedOverheads.otherCost}
+                            onChange={(e) =>
+                              updateOwnedOverhead(
+                                'otherCost',
+                                parseFloat(e.target.value) || 0
+                              )
+                            }
+                            className="w-full bg-transparent font-mono font-bold text-white text-xs focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 border-t border-neutral-800 flex items-center justify-between text-[11px]">
+                      <span className="text-neutral-400">EFTPOS / Merchant Fee (%):</span>
+                      <div className="inline-flex items-center bg-[#222222] border border-neutral-700 rounded-lg px-2 py-0.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="10"
+                          step="0.1"
+                          value={ownedOverheads.merchantFeePct}
+                          onChange={(e) =>
+                            updateOwnedOverhead(
+                              'merchantFeePct',
+                              parseFloat(e.target.value) || 0
+                            )
+                          }
+                          className="w-12 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none"
+                        />
+                        <span className="text-neutral-400 font-mono ml-1">%</span>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1606,7 +2139,7 @@ export default function App() {
                       <span>
                         <i className="fa-solid fa-ticket"></i> Venue Ticket Clip (Editable)
                       </span>
-                      <div className="inline-flex items-center bg-[#151621] border border-trough-yellow/50 rounded-lg px-2 py-0.5">
+                      <div className="inline-flex items-center bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg px-2 py-0.5">
                         <span className="text-trough-yellow font-mono mr-1">$</span>
                         <input
                           type="number"
@@ -1619,7 +2152,7 @@ export default function App() {
                           }
                           className="w-16 bg-transparent text-right font-mono font-bold text-white text-xs focus:outline-none"
                         />
-                        <span className="text-[10px] text-slate-400 ml-1">/ Ticket</span>
+                        <span className="text-[10px] text-neutral-400 ml-1">/ Ticket</span>
                       </div>
                     </div>
 
@@ -1630,25 +2163,25 @@ export default function App() {
                       step="0.5"
                       value={Math.min(25, simTicketClip)}
                       onChange={(e) => setSimTicketClip(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                      className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                     />
-                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                    <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
                       <span>$0 Clip</span>
                       <span className="text-trough-yellow">$5.00 Standard</span>
                       <span>$10.00+ High Clip</span>
                     </div>
 
-                    <p className="text-[11px] text-slate-300 leading-tight">
+                    <p className="text-[11px] text-neutral-300 leading-tight">
                       Venue collects and retains ${simTicketClip.toFixed(2)} per paid ticket.
                       Promoter retains balance. Venue retains 100% of Bar &amp; Cloak.
                     </p>
                     <div className="pt-1 border-t border-trough-yellow/20 flex items-center justify-between">
-                      <label className="text-[11px] text-slate-200 cursor-pointer flex items-center gap-1.5">
+                      <label className="text-[11px] text-neutral-200 cursor-pointer flex items-center gap-1.5">
                         <input
                           type="checkbox"
                           checked={simPromoterDeposit}
                           onChange={(e) => setSimPromoterDeposit(e.target.checked)}
-                          className="rounded border-slate-700 text-trough-yellow focus:ring-0"
+                          className="rounded border-neutral-700 text-trough-yellow focus:ring-0"
                         />
                         Include $550 Non-Refundable Booking Deposit
                       </label>
@@ -1659,8 +2192,8 @@ export default function App() {
                 {/* Average Bar Spend */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-slate-300">Average Bar Spend Per Head</span>
-                    <span className="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <span className="font-medium text-neutral-300">Average Bar Spend Per Head</span>
+                    <span className="font-mono font-bold text-white bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
                       ${simBarSpend.toFixed(2)} AUD
                     </span>
                   </div>
@@ -1671,9 +2204,9 @@ export default function App() {
                     step="0.5"
                     value={simBarSpend}
                     onChange={(e) => setSimBarSpend(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                    className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                  <div className="flex justify-between text-[10px] text-neutral-500 font-mono">
                     <span>$12 Low</span>
                     <span>$22.50 Baseline</span>
                     <span>$35+ High Trade</span>
@@ -1683,8 +2216,8 @@ export default function App() {
                 {/* Cloakroom Check-in % */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-slate-300">Cloakroom Check-in Rate</span>
-                    <span className="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <span className="font-medium text-neutral-300">Cloakroom Check-in Rate</span>
+                    <span className="font-mono font-bold text-white bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
                       {simCloakRate}% ($5.00 / item)
                     </span>
                   </div>
@@ -1695,15 +2228,15 @@ export default function App() {
                     step="5"
                     value={simCloakRate}
                     onChange={(e) => setSimCloakRate(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                    className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                   />
                 </div>
 
                 {/* Beverage COGS Target */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-medium text-slate-300">Beverage Stock COGS %</span>
-                    <span className="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <span className="font-medium text-neutral-300">Beverage Stock COGS %</span>
+                    <span className="font-mono font-bold text-white bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
                       {simCogsRate.toFixed(1)}%
                     </span>
                   </div>
@@ -1714,9 +2247,9 @@ export default function App() {
                     step="0.5"
                     value={simCogsRate}
                     onChange={(e) => setSimCogsRate(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg cursor-pointer"
+                    className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer"
                   />
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-[10px] text-neutral-400">
                     Strict Trough X KPI cap is 22.0% maximum.
                   </p>
                 </div>
@@ -1725,7 +2258,7 @@ export default function App() {
               {/* Live Financial Output Statement (7 cols) */}
               <div className="lg:col-span-7 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 flex flex-col justify-between shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                  <div className="flex items-center justify-between border-b border-neutral-800 pb-3 mb-4">
                     <div>
                       <h3 className="font-bold text-sm text-white flex items-center gap-2">
                         <i className="fa-solid fa-file-invoice-dollar text-trough-yellow"></i> Live
@@ -1753,12 +2286,14 @@ export default function App() {
                   {/* Financial Table */}
                   <div className="space-y-2.5 text-xs font-mono">
                     {/* REVENUE BLOCK */}
-                    <div className="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
-                      <div className="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
-                        <span>1. GROSS VENUE REVENUE</span>
+                    <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-neutral-400 font-sans text-[11px] font-semibold tracking-wider">
+                        <h3 className="font-sans font-bold text-sm text-white tracking-normal">
+                          1. GROSS VENUE REVENUE
+                        </h3>
                         <span>AUSTRALIAN DOLLARS</span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span>
                           {simMode === 'owned'
                             ? `Ticket Sales (${simPax} @ $${simTicketPrice.toFixed(2)}):`
@@ -1768,13 +2303,13 @@ export default function App() {
                           ${formatMoney(simMetrics.ticketRevenue)}
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span>Bar / POS Turnover:</span>
                         <span className="font-bold text-white">
                           ${formatMoney(simMetrics.barRevenue)}
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span>Cloakroom Takings:</span>
                         <span className="font-bold text-white">
                           ${formatMoney(simMetrics.cloakRevenue)}
@@ -1788,7 +2323,7 @@ export default function App() {
                           </span>
                         </div>
                       )}
-                      <div className="pt-1.5 border-t border-slate-800 flex justify-between font-bold text-sm text-white font-sans">
+                      <div className="pt-1.5 border-t border-neutral-800 flex justify-between font-bold text-sm text-white font-sans">
                         <span>Total Gross Turnover:</span>
                         <span className="font-mono text-trough-yellow">
                           ${formatMoney(simMetrics.grossTurnover)}
@@ -1797,24 +2332,26 @@ export default function App() {
                     </div>
 
                     {/* COGS BLOCK */}
-                    <div className="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
-                      <div className="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
-                        <span>2. COST OF GOODS SOLD (COGS)</span>
+                    <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-neutral-400 font-sans text-[11px] font-semibold tracking-wider">
+                        <h3 className="font-sans font-bold text-sm text-white tracking-normal">
+                          2. COST OF GOODS SOLD (COGS)
+                        </h3>
                         <span>TARGET: &le; 22%</span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span>Beverage Stock Burn ({simCogsRate.toFixed(1)}%):</span>
                         <span className="text-rose-400">
                           (${formatMoney(simMetrics.beverageCogs)})
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span>Bar Consumables &amp; Glassware:</span>
                         <span className="text-rose-400">
                           (${simMetrics.consumables.toFixed(2)})
                         </span>
                       </div>
-                      <div className="pt-1.5 border-t border-slate-800 flex justify-between font-bold text-white font-sans">
+                      <div className="pt-1.5 border-t border-neutral-800 flex justify-between font-bold text-white font-sans">
                         <span>Gross Operating Margin:</span>
                         <span className="font-mono text-emerald-400">
                           ${formatMoney(simMetrics.grossMargin)}
@@ -1823,15 +2360,19 @@ export default function App() {
                     </div>
 
                     {/* LABOUR & OVERHEADS */}
-                    <div className="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
-                      <div className="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
-                        <span>3. WAGES &amp; DIRECT OVERHEADS</span>
-                        <span>IFA FLAT RATES</span>
+                    <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-1.5">
+                      <div className="flex items-center justify-between text-neutral-400 font-sans text-[11px] font-semibold tracking-wider">
+                        <h3 className="font-sans font-bold text-sm text-white tracking-normal">
+                          3. WAGES &amp; DIRECT OVERHEADS
+                        </h3>
+                        <span>
+                          {simMode === 'owned' ? 'EDITABLE OVERHEADS + IFA WAGES' : 'IFA FLAT RATES'}
+                        </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-neutral-300">
                         <span className="flex items-center gap-1.5">
                           Direct Venue Wages:
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-sans">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans">
                             {simMetrics.staffCount} Staff ({simMetrics.guards}{' '}
                             {simMetrics.guards === 1 ? 'Guard' : 'Guards'})
                           </span>
@@ -1840,26 +2381,118 @@ export default function App() {
                           (${formatMoney(simMetrics.baseRosterWages)})
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between items-center text-neutral-300">
                         <span>DJ &amp; Entertainment Talent:</span>
-                        <span className="text-rose-400">
-                          {simMetrics.talentCost > 0
-                            ? `($${simMetrics.talentCost.toFixed(2)})`
-                            : '$0.00 (Promoter Covered)'}
-                        </span>
+                        {simMode === 'owned' ? (
+                          <div className="inline-flex items-center bg-[#191919] border border-neutral-700 rounded px-2 py-0.5 focus-within:border-trough-yellow">
+                            <span className="text-rose-400 mr-1">($</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="50"
+                              value={ownedOverheads.talentCost}
+                              onChange={(e) =>
+                                updateOwnedOverhead(
+                                  'talentCost',
+                                  parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-16 bg-transparent text-right text-rose-400 font-bold focus:outline-none"
+                            />
+                            <span className="text-rose-400 ml-0.5">)</span>
+                          </div>
+                        ) : (
+                          <span className="text-rose-400">$0.00 (Promoter Covered)</span>
+                        )}
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between items-center text-neutral-300">
                         <span>Sound/Lighting Tech &amp; Decor:</span>
+                        {simMode === 'owned' ? (
+                          <div className="inline-flex items-center bg-[#191919] border border-neutral-700 rounded px-2 py-0.5 focus-within:border-trough-yellow">
+                            <span className="text-rose-400 mr-1">($</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="25"
+                              value={ownedOverheads.productionCost}
+                              onChange={(e) =>
+                                updateOwnedOverhead(
+                                  'productionCost',
+                                  parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-16 bg-transparent text-right text-rose-400 font-bold focus:outline-none"
+                            />
+                            <span className="text-rose-400 ml-0.5">)</span>
+                          </div>
+                        ) : (
+                          <span className="text-rose-400">
+                            (${simMetrics.productionCost.toFixed(2)})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex justify-between items-center text-neutral-300">
+                        <span>Marketing &amp; Street Posters:</span>
+                        {simMode === 'owned' ? (
+                          <div className="inline-flex items-center bg-[#191919] border border-neutral-700 rounded px-2 py-0.5 focus-within:border-trough-yellow">
+                            <span className="text-rose-400 mr-1">($</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="25"
+                              value={ownedOverheads.marketingCost}
+                              onChange={(e) =>
+                                updateOwnedOverhead(
+                                  'marketingCost',
+                                  parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-16 bg-transparent text-right text-rose-400 font-bold focus:outline-none"
+                            />
+                            <span className="text-rose-400 ml-0.5">)</span>
+                          </div>
+                        ) : (
+                          <span className="text-rose-400">$0.00 (Promoter Covered)</span>
+                        )}
+                      </div>
+                      {simMode === 'owned' && (
+                        <div className="flex justify-between items-center text-neutral-300">
+                          <span>Other Direct Event Overheads:</span>
+                          <div className="inline-flex items-center bg-[#191919] border border-neutral-700 rounded px-2 py-0.5 focus-within:border-trough-yellow">
+                            <span className="text-rose-400 mr-1">($</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="25"
+                              value={ownedOverheads.otherCost}
+                              onChange={(e) =>
+                                updateOwnedOverhead(
+                                  'otherCost',
+                                  parseFloat(e.target.value) || 0
+                                )
+                              }
+                              className="w-16 bg-transparent text-right text-rose-400 font-bold focus:outline-none"
+                            />
+                            <span className="text-rose-400 ml-0.5">)</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-neutral-300">
+                        <span>
+                          EFTPOS / Merchant Terminal Fees (
+                          {simMode === 'owned'
+                            ? `${ownedOverheads.merchantFeePct.toFixed(1)}%`
+                            : '1.5%'}
+                          ):
+                        </span>
                         <span className="text-rose-400">
-                          (${simMetrics.productionCost.toFixed(2)})
+                          (${simMetrics.terminalFees.toFixed(2)})
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-300">
-                        <span>Marketing, Street Posters &amp; EFTPOS (1.5%):</span>
-                        <span className="text-rose-400">
-                          ($
-                          {(simMetrics.marketingCost + simMetrics.terminalFees).toFixed(2)}
-                          )
+                      <div className="pt-1.5 border-t border-neutral-800 flex justify-between font-bold text-white font-sans">
+                        <span>Total Direct Overheads (Excl. Wages):</span>
+                        <span className="font-mono text-rose-400">
+                          (${formatMoney(simMetrics.totalOverheads)})
                         </span>
                       </div>
                     </div>
@@ -1867,10 +2500,10 @@ export default function App() {
                 </div>
 
                 {/* Bottom-Line Result Box */}
-                <div className="mt-4 pt-4 border-t border-slate-800">
-                  <div className="bg-gradient-to-br from-[#242738] to-[#1E202C] p-4 rounded-xl border-2 border-trough-yellow flex flex-wrap items-center justify-between gap-4">
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <div className="bg-gradient-to-br from-[#191919] to-[#2B2B2B] p-4 rounded-xl border-2 border-trough-yellow flex flex-wrap items-center justify-between gap-4">
                     <div>
-                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                      <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider block">
                         Net Contribution Operating Surplus
                       </span>
                       <span
@@ -1887,7 +2520,7 @@ export default function App() {
                     </div>
                     <div className="flex items-center gap-4 text-xs font-mono">
                       <div>
-                        <span className="block text-slate-400 text-[10px]">WAGES % OF REV</span>
+                        <span className="block text-neutral-400 text-[10px]">WAGES % OF REV</span>
                         <span
                           className={`font-bold ${
                             simMetrics.wageRatio > 35
@@ -1900,8 +2533,8 @@ export default function App() {
                           {simMetrics.wageRatio.toFixed(1)}%
                         </span>
                       </div>
-                      <div className="border-l border-slate-700 pl-4">
-                        <span className="block text-slate-400 text-[10px]">CONTRIB MARGIN</span>
+                      <div className="border-l border-neutral-700 pl-4">
+                        <span className="block text-neutral-400 text-[10px]">CONTRIB MARGIN</span>
                         <span className="font-bold text-emerald-400">
                           {simMetrics.marginRatio.toFixed(1)}%
                         </span>
@@ -1918,7 +2551,7 @@ export default function App() {
         {activeTab === 'wages' && (
           <section className="space-y-6">
             <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-sm text-white flex items-center gap-2">
@@ -1938,12 +2571,12 @@ export default function App() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <label className="text-xs text-slate-300 flex items-center gap-2 cursor-pointer bg-[#151621] px-3 py-1.5 rounded-lg border border-slate-800">
+                  <label className="text-xs text-neutral-300 flex items-center gap-2 cursor-pointer bg-[#1E1E1E] px-3 py-1.5 rounded-lg border border-neutral-800">
                     <input
                       type="checkbox"
                       checked={wagesIncludeSuper}
                       onChange={(e) => setWagesIncludeSuper(e.target.checked)}
-                      className="rounded border-slate-700 text-trough-yellow focus:ring-0"
+                      className="rounded border-neutral-700 text-trough-yellow focus:ring-0"
                     />
                     <span>Apply Statutory Super (11.5%)</span>
                   </label>
@@ -1968,7 +2601,7 @@ export default function App() {
 
                   <button
                     onClick={resetRosterDefaults}
-                    className="text-xs text-slate-400 hover:text-trough-yellow flex items-center gap-1 cursor-pointer px-2 py-1"
+                    className="text-xs text-neutral-400 hover:text-trough-yellow flex items-center gap-1 cursor-pointer px-2 py-1"
                   >
                     <i className="fa-solid fa-arrow-rotate-right"></i> Reset Defaults
                   </button>
@@ -1976,21 +2609,21 @@ export default function App() {
               </div>
 
               {/* Saved Roster Templates Bar */}
-              <div className="bg-[#151621] p-3.5 rounded-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="bg-[#1E1E1E] p-3.5 rounded-xl border border-neutral-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="space-y-1.5 flex-1">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold block">
                     Saved Wage Calculator Templates (Click to Load):
                   </span>
                   <div className="flex flex-wrap gap-2">
                     {savedRosterTemplates.map((tpl) => (
                       <div
                         key={tpl.id}
-                        className="inline-flex items-center rounded-lg bg-[#1E202C] border border-slate-700 overflow-hidden text-xs"
+                        className="inline-flex items-center rounded-lg bg-[#2B2B2B] border border-neutral-700 overflow-hidden text-xs"
                       >
                         <button
                           type="button"
                           onClick={() => handleLoadRosterTemplate(tpl)}
-                          className="px-2.5 py-1 text-slate-200 hover:text-trough-yellow font-medium transition cursor-pointer flex items-center gap-1.5"
+                          className="px-2.5 py-1 text-neutral-200 hover:text-trough-yellow font-medium transition cursor-pointer flex items-center gap-1.5"
                         >
                           <i className="fa-solid fa-folder-open text-trough-yellow text-[10px]"></i>
                           <span>{tpl.name}</span>
@@ -1999,7 +2632,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => handleDeleteRosterTemplate(tpl.id)}
-                            className="px-2 py-1 text-slate-500 hover:text-rose-400 border-l border-slate-700 transition cursor-pointer"
+                            className="px-2 py-1 text-neutral-500 hover:text-rose-400 border-l border-neutral-700 transition cursor-pointer"
                             title="Delete saved template"
                           >
                             <i className="fa-solid fa-xmark"></i>
@@ -2016,12 +2649,12 @@ export default function App() {
                     value={newTemplateName}
                     onChange={(e) => setNewTemplateName(e.target.value)}
                     placeholder="New template name (e.g. Mardi Gras Roster)"
-                    className="bg-[#10111A] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none w-56"
+                    className="bg-[#171717] border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none w-56"
                   />
                   <button
                     type="button"
                     onClick={handleSaveNamedRosterTemplate}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelSlate text-white border border-slate-600 transition cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelLight text-white border border-neutral-600 transition cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                   >
                     <i className="fa-solid fa-bookmark text-trough-yellow"></i>
                     <span>Save as Template</span>
@@ -2032,7 +2665,7 @@ export default function App() {
               {/* Roster Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+                  <thead className="bg-[#202020] text-neutral-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
                     <tr>
                       <th className="py-3 px-3">Role &amp; Operational Scope (Editable)</th>
                       <th className="py-3 px-3 text-center">Headcount</th>
@@ -2043,9 +2676,9 @@ export default function App() {
                       <th className="py-3 px-2 text-center no-print">Remove</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800 text-slate-200">
+                  <tbody className="divide-y divide-neutral-800 text-neutral-200">
                     {rosterSummary.itemsWithTotals.map((item, index) => (
-                      <tr key={index} className="hover:bg-slate-800/40 transition">
+                      <tr key={index} className="hover:bg-neutral-800/40 transition">
                         <td className="py-2.5 px-3 space-y-1 min-w-[240px]">
                           <input
                             type="text"
@@ -2053,7 +2686,7 @@ export default function App() {
                             onChange={(e) =>
                               updateRosterItem(index, 'role', e.target.value)
                             }
-                            className="w-full bg-transparent border-b border-transparent hover:border-slate-700 focus:border-trough-yellow focus:bg-[#151621] rounded px-1.5 py-0.5 font-medium text-white text-xs focus:outline-none"
+                            className="w-full bg-transparent border-b border-transparent hover:border-neutral-700 focus:border-trough-yellow focus:bg-[#1E1E1E] rounded px-1.5 py-0.5 font-medium text-white text-xs focus:outline-none"
                           />
                           <input
                             type="text"
@@ -2061,7 +2694,7 @@ export default function App() {
                             onChange={(e) =>
                               updateRosterItem(index, 'notes', e.target.value)
                             }
-                            className="w-full bg-transparent border-b border-transparent hover:border-slate-700 focus:border-trough-yellow focus:bg-[#151621] rounded px-1.5 py-0.5 text-[11px] text-slate-400 focus:outline-none"
+                            className="w-full bg-transparent border-b border-transparent hover:border-neutral-700 focus:border-trough-yellow focus:bg-[#1E1E1E] rounded px-1.5 py-0.5 text-[11px] text-neutral-400 focus:outline-none"
                           />
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -2077,7 +2710,7 @@ export default function App() {
                                 parseFloat(e.target.value) || 0
                               )
                             }
-                            className="w-14 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
+                            className="w-14 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
                           />
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -2090,12 +2723,12 @@ export default function App() {
                             onChange={(e) =>
                               updateRosterItem(index, 'hours', parseFloat(e.target.value) || 0)
                             }
-                            className="w-16 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
+                            className="w-16 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
                           />
                         </td>
                         <td className="py-3 px-3 text-center">
                           <div className="inline-flex items-center">
-                            <span className="text-slate-500 mr-1">$</span>
+                            <span className="text-neutral-500 mr-1">$</span>
                             <input
                               type="number"
                               step="1"
@@ -2105,7 +2738,7 @@ export default function App() {
                               onChange={(e) =>
                                 updateRosterItem(index, 'rate', parseFloat(e.target.value) || 0)
                               }
-                              className="w-16 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
+                              className="w-16 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-center font-mono text-white text-xs focus:border-trough-yellow focus:outline-none"
                             />
                           </div>
                         </td>
@@ -2119,7 +2752,7 @@ export default function App() {
                             className={`px-2 py-0.5 rounded text-[10px] cursor-pointer transition ${
                               item.hasSuper
                                 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+                                : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-white'
                             }`}
                           >
                             {item.hasSuper ? '11.5% IFA' : 'Contracted 0%'}
@@ -2132,7 +2765,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => removeRosterRole(index)}
-                            className="text-slate-500 hover:text-rose-400 transition cursor-pointer p-1"
+                            className="text-neutral-500 hover:text-rose-400 transition cursor-pointer p-1"
                             title="Remove role from roster"
                           >
                             <i className="fa-solid fa-trash-can"></i>
@@ -2145,26 +2778,26 @@ export default function App() {
               </div>
 
               {/* Roster Summary KPI Bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800">
-                <div className="bg-[#151621] p-3 rounded-xl border border-slate-800">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-neutral-800">
+                <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800">
                   <span className="text-[11px] text-trough-muted block">Total Headcount</span>
                   <span className="text-xl font-bold font-mono text-white">
                     {rosterSummary.totalHeadcount} Staff
                   </span>
                 </div>
-                <div className="bg-[#151621] p-3 rounded-xl border border-slate-800">
+                <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800">
                   <span className="text-[11px] text-trough-muted block">Total Rostered Hours</span>
                   <span className="text-xl font-bold font-mono text-white">
                     {rosterSummary.totalHours.toFixed(1)} Hrs
                   </span>
                 </div>
-                <div className="bg-[#151621] p-3 rounded-xl border border-slate-800">
+                <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800">
                   <span className="text-[11px] text-trough-muted block">Direct Gross Wages</span>
                   <span className="text-xl font-bold font-mono text-white">
                     ${formatMoney(rosterSummary.grossWages)}
                   </span>
                 </div>
-                <div className="bg-gradient-to-r from-trough-cardDark to-[#242738] p-3 rounded-xl border border-trough-yellow">
+                <div className="bg-gradient-to-r from-trough-cardDark to-[#191919] p-3 rounded-xl border border-trough-yellow">
                   <span className="text-[11px] text-trough-yellow font-medium block">
                     Total Roster Commitment
                   </span>
@@ -2175,8 +2808,8 @@ export default function App() {
               </div>
 
               {/* Award & IFA Compliance Note */}
-              <div className="bg-[#151621] p-4 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-2">
-                <h4 className="font-semibold text-slate-200 flex items-center gap-2">
+              <div className="bg-[#1E1E1E] p-4 rounded-xl border border-neutral-800 text-xs text-neutral-400 space-y-2">
+                <h4 className="font-semibold text-neutral-200 flex items-center gap-2">
                   <i className="fa-solid fa-circle-info text-trough-yellow"></i> Individual
                   Flexibility Agreement (IFA) &amp; BOOT Testing
                 </h4>
@@ -2185,7 +2818,7 @@ export default function App() {
                   absorb weekend penalty rates, late-night allowances (post-midnight), and overtime,
                   ensuring that each rostered worker is Better Off Overall than the base HIGA award.
                 </p>
-                <div className="flex flex-wrap gap-4 text-[11px] pt-1 text-slate-300">
+                <div className="flex flex-wrap gap-4 text-[11px] pt-1 text-neutral-300">
                   <span>&bull; Venue Duty Manager / Crowd Control: $55.00/hr (6.0 hrs)</span>
                   <span>&bull; Senior Bartender (x2): $45.00/hr (6.0 hrs)</span>
                   <span>&bull; Door / Ticket Scanner &amp; Cloak: $35.00/hr (6.0 hrs)</span>
@@ -2201,7 +2834,7 @@ export default function App() {
           <section className="space-y-6">
             {/* Contractual Structure Banner */}
             <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="border-b border-slate-800 pb-3">
+              <div className="border-b border-neutral-800 pb-3">
                 <span className="text-xs px-2.5 py-0.5 rounded bg-trough-yellow/10 text-trough-yellow font-semibold border border-trough-yellow/30 uppercase tracking-wider">
                   Commercial Framework
                 </span>
@@ -2215,12 +2848,12 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-[#151621] p-4 rounded-xl border border-slate-800 space-y-2">
+                <div className="bg-[#1E1E1E] p-4 rounded-xl border border-neutral-800 space-y-2">
                   <h4 className="font-semibold text-sm text-emerald-400 flex items-center gap-2">
                     <i className="fa-solid fa-circle-check"></i> What Venue (Trough X) Captures
                     &amp; Retains
                   </h4>
-                  <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+                  <ul className="text-xs text-neutral-300 space-y-1.5 list-disc list-inside">
                     <li>
                       <strong className="text-white">$5.00 flat clip</strong> per paid ticket sold
                       (deducted from promoter settlement).
@@ -2240,22 +2873,19 @@ export default function App() {
                   </ul>
                 </div>
 
-                <div className="bg-[#151621] p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h4 className="font-semibold text-sm text-blue-400 flex items-center gap-2">
+                <div className="bg-[#1E1E1E] p-4 rounded-xl border border-neutral-800 space-y-2">
+                  <h4 className="font-semibold text-sm text-trough-yellow flex items-center gap-2">
                     <i className="fa-solid fa-users"></i> What Venue (Trough X) Provides &amp;
                     Absorbs
                   </h4>
-                  <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+                  <ul className="text-xs text-neutral-300 space-y-1.5 list-disc list-inside">
                     <li>
-                      Full operational staffing roster (Duty Manager, Floor Supervisor, Bar Staff).
+                      Full operational staffing roster (Venue Duty Manager &amp; Senior Bartenders).
                     </li>
                     <li>
-                      Contracted crowd control security (1:100 ratio) &amp; door scanner personnel.
+                      Licensed crowd control security &amp; door/ticket scanner &amp; cloakroom staff.
                     </li>
-                    <li>
-                      Mandatory dedicated harm-minimisation medic &amp; medical supplies.
-                    </li>
-                    <li>Full post-event bio-wash and cleaning team.</li>
+                    <li>Full post-event bio-wash and cleaning crew.</li>
                   </ul>
                 </div>
               </div>
@@ -2274,9 +2904,9 @@ export default function App() {
                   dollar of surplus:
                 </p>
 
-                <div className="bg-[#14151F] p-4 rounded-xl border border-slate-800 space-y-3 text-xs font-mono">
+                <div className="bg-[#1C1C1C] p-4 rounded-xl border border-neutral-800 space-y-3 text-xs font-mono">
                   <div>
-                    <span className="text-slate-400 text-[11px] block">
+                    <span className="text-neutral-400 text-[11px] block">
                       FIXED EVENT OPERATING OVERHEAD:
                     </span>
                     <span className="text-sm font-bold text-white">
@@ -2287,7 +2917,7 @@ export default function App() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 text-[11px] block">
+                    <span className="text-neutral-400 text-[11px] block">
                       NET MARGIN HARVEST PER PATRON:
                     </span>
                     <span className="text-sm font-bold text-white">
@@ -2298,14 +2928,14 @@ export default function App() {
                       </span>
                     </span>
                   </div>
-                  <div className="pt-2 border-t border-slate-800">
-                    <span className="text-slate-400 text-[11px] block">
+                  <div className="pt-2 border-t border-neutral-800">
+                    <span className="text-neutral-400 text-[11px] block">
                       MATHEMATICAL BREAKEVEN ATTENDANCE:
                     </span>
                     <div className="text-lg font-bold text-trough-yellow">
                       {dealMetrics.breakevenNoDeposit} Paid Patrons
                     </div>
-                    <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                    <p className="text-[11px] text-neutral-400 font-sans mt-0.5">
                       Below {dealMetrics.breakevenNoDeposit} patrons, venue operating wages exceed
                       retained gross margin.
                     </p>
@@ -2316,7 +2946,7 @@ export default function App() {
                   <div className="font-semibold text-amber-300 flex items-center gap-1.5">
                     <i className="fa-solid fa-triangle-exclamation"></i> Deposit Insulation Rule
                   </div>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-neutral-300">
                     Collecting the $550.00 non-refundable booking deposit lowers venue breakeven
                     from {dealMetrics.breakevenNoDeposit} down to{' '}
                     <strong>{dealMetrics.breakevenWithDeposit} paid patrons</strong>.
@@ -2327,7 +2957,7 @@ export default function App() {
               {/* Deal Viability Simulator (7 cols) */}
               <div className="lg:col-span-7 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                  <div className="flex items-center justify-between border-b border-neutral-800 pb-3 mb-4">
                     <div>
                       <h3 className="font-bold text-sm text-white flex items-center gap-2">
                         <i className="fa-solid fa-vial-circle-check text-trough-yellow"></i> Live
@@ -2351,7 +2981,7 @@ export default function App() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-300 font-medium">
+                      <label className="text-xs text-neutral-300 font-medium">
                         Anticipated Attendance
                       </label>
                       <div className="relative">
@@ -2361,9 +2991,9 @@ export default function App() {
                           min="50"
                           max="300"
                           onChange={(e) => setDealPax(parseInt(e.target.value, 10) || 0)}
-                          className="w-full bg-[#151621] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-slate-500">PAX</span>
+                        <span className="absolute right-3 top-2 text-xs text-neutral-500">PAX</span>
                       </div>
                     </div>
 
@@ -2382,18 +3012,18 @@ export default function App() {
                           onChange={(e) =>
                             setDealClip(Math.max(0, parseFloat(e.target.value) || 0))
                           }
-                          className="w-full bg-[#151621] border border-trough-yellow/50 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          className="w-full bg-[#1E1E1E] border border-trough-yellow/50 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-slate-500">AUD</span>
+                        <span className="absolute right-3 top-2 text-xs text-neutral-500">AUD</span>
                       </div>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-300 font-medium">
+                      <label className="text-xs text-neutral-300 font-medium">
                         Anticipated Bar Spend / Head
                       </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2 text-xs text-slate-500">$</span>
+                        <span className="absolute left-3 top-2 text-xs text-neutral-500">$</span>
                         <input
                           type="number"
                           value={dealSpend}
@@ -2401,16 +3031,16 @@ export default function App() {
                           max="50"
                           step="0.5"
                           onChange={(e) => setDealSpend(parseFloat(e.target.value) || 0)}
-                          className="w-full bg-[#151621] border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
+                          className="w-full bg-[#1E1E1E] border border-neutral-700 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-slate-500">AUD</span>
+                        <span className="absolute right-3 top-2 text-xs text-neutral-500">AUD</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Financial Summary Table */}
-                  <div className="mt-4 bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-2 text-xs font-mono">
-                    <div className="flex justify-between text-slate-300">
+                  <div className="mt-4 bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-2 text-xs font-mono">
+                    <div className="flex justify-between text-neutral-300">
                       <span>
                         Retained Ticket Clip (${dealMetrics.clip.toFixed(2)} &times; {dealPax}):
                       </span>
@@ -2418,36 +3048,36 @@ export default function App() {
                         ${formatMoney(dealMetrics.clipTotal)}
                       </span>
                     </div>
-                    <div className="flex justify-between text-slate-300">
+                    <div className="flex justify-between text-neutral-300">
                       <span>Retained Bar Sales:</span>
                       <span className="font-bold text-white">
                         ${formatMoney(dealMetrics.barTotal)}
                       </span>
                     </div>
-                    <div className="flex justify-between text-slate-300">
+                    <div className="flex justify-between text-neutral-300">
                       <span>Retained Cloakroom (50% check-in @ $5):</span>
                       <span className="font-bold text-white">
                         ${formatMoney(dealMetrics.cloakTotal)}
                       </span>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-neutral-400">
                       <span>Less Beverage COGS (22%) &amp; Consumables:</span>
                       <span className="text-rose-400">(${formatMoney(dealMetrics.cogs)})</span>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-neutral-400">
                       <span>Less Mandatory Venue Wages (IFA Roster):</span>
                       <span className="text-rose-400">(${dealMetrics.wages.toFixed(2)})</span>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-neutral-400">
                       <span>Less Merchant &amp; Waste Incidentals:</span>
                       <span className="text-rose-400">(${dealMetrics.overheads.toFixed(2)})</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+                <div className="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-between">
                   <div>
-                    <span className="text-xs text-slate-400 block">
+                    <span className="text-xs text-neutral-400 block">
                       Projected Venue Net Surplus
                     </span>
                     <span
@@ -2465,7 +3095,7 @@ export default function App() {
                       <span className="text-xs font-semibold text-emerald-400 block">
                         <i className="fa-solid fa-thumbs-up"></i> APPROVE BOOKING
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-neutral-400">
                         Yield clears venue fixed wage base
                       </span>
                     </div>
@@ -2474,7 +3104,7 @@ export default function App() {
                       <span className="text-xs font-semibold text-rose-400 block">
                         <i className="fa-solid fa-hand"></i> REQUIRE LABOUR GUARANTEE
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-neutral-400">
                         Demand $1,000 venue deposit/guarantee
                       </span>
                     </div>
@@ -2516,7 +3146,7 @@ export default function App() {
             />
 
             <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-sm text-white flex items-center gap-2">
@@ -2533,7 +3163,7 @@ export default function App() {
                   <p className="text-xs text-trough-muted">
                     Click <strong className="text-trough-yellow">Edit in Simulator</strong> on any
                     event to model and save changes via the Budget Simulator, or use{' '}
-                    <strong className="text-slate-200">Quick Edit</strong> to modify cells inline.
+                    <strong className="text-neutral-200">Quick Edit</strong> to modify cells inline.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2557,13 +3187,13 @@ export default function App() {
                     <span>Save Schedule</span>
                   </button>
 
-                  <span className="text-xs text-slate-500 pl-1">Filter:</span>
+                  <span className="text-xs text-neutral-500 pl-1">Filter:</span>
                   <button
                     onClick={() => setEventFilter('all')}
                     className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer ${
                       eventFilter === 'all'
                         ? 'font-semibold bg-trough-yellow text-black'
-                        : 'font-medium bg-slate-800 text-slate-300 hover:text-white'
+                        : 'font-medium bg-neutral-800 text-neutral-300 hover:text-white'
                     }`}
                   >
                     All ({events.length})
@@ -2573,7 +3203,7 @@ export default function App() {
                     className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer ${
                       eventFilter === 'owned'
                         ? 'font-semibold bg-trough-yellow text-black'
-                        : 'font-medium bg-slate-800 text-slate-300 hover:text-white'
+                        : 'font-medium bg-neutral-800 text-neutral-300 hover:text-white'
                     }`}
                   >
                     Owned ({events.filter((e) => e.type === 'owned').length})
@@ -2583,7 +3213,7 @@ export default function App() {
                     className={`px-2.5 py-1 rounded-lg text-xs cursor-pointer ${
                       eventFilter === 'promoter'
                         ? 'font-semibold bg-trough-yellow text-black'
-                        : 'font-medium bg-slate-800 text-slate-300 hover:text-white'
+                        : 'font-medium bg-neutral-800 text-neutral-300 hover:text-white'
                     }`}
                   >
                     Promoter ({events.filter((e) => e.type === 'promoter').length})
@@ -2594,7 +3224,7 @@ export default function App() {
               {/* Schedule Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+                  <thead className="bg-[#202020] text-neutral-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
                     <tr>
                       <th className="py-3 px-3">Date</th>
                       <th className="py-3 px-3">Event Title &amp; Promoter</th>
@@ -2608,7 +3238,7 @@ export default function App() {
                       <th className="py-3 px-3 text-right no-print">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80 text-slate-200">
+                  <tbody className="divide-y divide-neutral-800/80 text-neutral-200">
                     {filteredEventsWithIndex.map(({ item, originalIndex }) => {
                       const isInlineEditing =
                         inlineEditIndex === originalIndex && inlineEditDraft !== null;
@@ -2631,7 +3261,7 @@ export default function App() {
                                     date: e.target.value,
                                   })
                                 }
-                                className="w-24 bg-[#151621] border border-slate-700 rounded px-2 py-1 font-mono text-xs text-white"
+                                className="w-24 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 font-mono text-xs text-white"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -2644,7 +3274,7 @@ export default function App() {
                                     title: e.target.value,
                                   })
                                 }
-                                className="w-full min-w-[160px] bg-[#151621] border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                className="w-full min-w-[160px] bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-xs text-white"
                               />
                             </td>
                             <td className="py-2 px-2">
@@ -2661,7 +3291,7 @@ export default function App() {
                                         : 'Owned Hero Night',
                                   });
                                 }}
-                                className="bg-[#151621] border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                className="bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-xs text-white"
                               >
                                 <option value="owned">Owned Hero Night</option>
                                 <option value="promoter">Promoter Hosted</option>
@@ -2679,7 +3309,7 @@ export default function App() {
                                     pax: Math.min(300, parseInt(e.target.value, 10) || 0),
                                   })
                                 }
-                                className="w-16 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-xs text-white"
+                                className="w-16 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-center font-mono text-xs text-white"
                               />
                             </td>
                             <td className="py-2 px-2 text-right">
@@ -2693,7 +3323,7 @@ export default function App() {
                                   })
                                 }
                                 title="Bar Gross ($)"
-                                className="w-24 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-right font-mono text-xs text-white"
+                                className="w-24 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-right font-mono text-xs text-white"
                               />
                             </td>
                             <td className="py-2 px-2 text-right">
@@ -2706,7 +3336,7 @@ export default function App() {
                                     wages: parseFloat(e.target.value) || 0,
                                   })
                                 }
-                                className="w-20 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-right font-mono text-xs text-rose-300"
+                                className="w-20 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-right font-mono text-xs text-rose-300"
                               />
                             </td>
                             <td className="py-2 px-2 text-right">
@@ -2719,7 +3349,7 @@ export default function App() {
                                     surplus: parseFloat(e.target.value) || 0,
                                   })
                                 }
-                                className="w-24 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-right font-mono text-xs text-trough-yellow font-bold"
+                                className="w-24 bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-right font-mono text-xs text-trough-yellow font-bold"
                               />
                             </td>
                             <td className="py-2 px-3 text-right whitespace-nowrap space-x-1.5">
@@ -2736,7 +3366,7 @@ export default function App() {
                                   setInlineEditIndex(null);
                                   setInlineEditDraft(null);
                                 }}
-                                className="px-2 py-1 rounded bg-slate-800 text-slate-300 text-[10px] cursor-pointer"
+                                className="px-2 py-1 rounded bg-neutral-800 text-neutral-300 text-[10px] cursor-pointer"
                               >
                                 Cancel
                               </button>
@@ -2748,14 +3378,14 @@ export default function App() {
                       return (
                         <tr
                           key={`${item.date}-${item.title}-${originalIndex}`}
-                          className="hover:bg-slate-800/40 transition"
+                          className="hover:bg-neutral-800/40 transition"
                         >
-                          <td className="py-3 px-3 font-mono font-medium text-slate-300 whitespace-nowrap">
+                          <td className="py-3 px-3 font-mono font-medium text-neutral-300 whitespace-nowrap">
                             {item.date}
                           </td>
                           <td className="py-3 px-3">
                             <span className="font-semibold text-white block">{item.title}</span>
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-[11px] text-neutral-400">
                               {item.type === 'promoter'
                                 ? '$5 Ticket Clip Agreement'
                                 : 'Full In-House Trough Production'}
@@ -2766,16 +3396,16 @@ export default function App() {
                               className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                                 item.type === 'owned'
                                   ? 'bg-trough-yellow/15 text-trough-yellow border border-trough-yellow/30'
-                                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                  : 'bg-neutral-800 text-neutral-300 border border-neutral-700'
                               }`}
                             >
                               {item.format}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-center font-mono font-semibold text-slate-200">
+                          <td className="py-3 px-3 text-center font-mono font-semibold text-neutral-200">
                             {item.pax} Pax
                           </td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-200">
+                          <td className="py-3 px-3 text-right font-mono text-neutral-200">
                             ${gross.toLocaleString()}
                           </td>
                           <td className="py-3 px-3 text-right font-mono text-rose-300">
@@ -2797,7 +3427,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => startInlineEditEvent(item, originalIndex)}
-                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-medium transition cursor-pointer"
+                              className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 text-[10px] font-medium transition cursor-pointer"
                               title="Quick inline edit"
                             >
                               <i className="fa-solid fa-pen"></i>
@@ -2805,7 +3435,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleDeleteEvent(originalIndex)}
-                              className="px-2 py-1 rounded bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 text-[10px] transition cursor-pointer"
+                              className="px-2 py-1 rounded bg-neutral-800 hover:bg-rose-500/20 text-neutral-400 hover:text-rose-400 border border-neutral-700 text-[10px] transition cursor-pointer"
                               title="Delete event"
                             >
                               <i className="fa-solid fa-trash-can"></i>
@@ -2819,8 +3449,8 @@ export default function App() {
               </div>
 
               {/* Pipeline Aggregates */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
-                <div className="bg-[#151621] p-3 rounded-xl border border-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-neutral-800">
+                <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800">
                   <span className="text-[11px] text-trough-muted block">
                     Total Pipeline Venue Turnover
                   </span>
@@ -2828,7 +3458,7 @@ export default function App() {
                     ${formatMoney(calendarTotals.totalGross)}
                   </span>
                 </div>
-                <div className="bg-[#151621] p-3 rounded-xl border border-slate-800">
+                <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800">
                   <span className="text-[11px] text-trough-muted block">
                     Committed Operational Wages
                   </span>
@@ -2836,7 +3466,7 @@ export default function App() {
                     (${formatMoney(calendarTotals.totalWages)})
                   </span>
                 </div>
-                <div className="bg-gradient-to-r from-trough-cardDark to-[#242738] p-3 rounded-xl border border-trough-yellow">
+                <div className="bg-gradient-to-r from-trough-cardDark to-[#191919] p-3 rounded-xl border border-trough-yellow">
                   <span className="text-[11px] text-trough-yellow font-medium block">
                     Total Forecast Season Net Surplus
                   </span>
@@ -2851,7 +3481,7 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="no-print border-t border-trough-cardBorder bg-[#14151F] py-4 text-center text-xs text-trough-muted mt-8">
+      <footer className="no-print border-t border-trough-cardBorder bg-[#1C1C1C] py-4 text-center text-xs text-trough-muted mt-8">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -2873,15 +3503,14 @@ export default function App() {
    CHART COMPONENTS (Matching Chart.js Visuals from Reference File)
    ===================================================================== */
 
-function ScenarioBarChart() {
-  const scenarios = [
-    { label: 'Actual (11 Sept)', gross: 4881, wages: 1290, surplus: 2644 },
-    { label: 'Owned (120 Pax)', gross: 6060, wages: 2560, surplus: 1472 },
-    { label: 'Owned (200 Pax)', gross: 11000, wages: 3235, surplus: 4475 },
-    { label: 'Owned Peak (280)', gross: 18440, wages: 3980, surplus: 9535 },
-    { label: 'Promoter (200)', gross: 6000, wages: 3235, surplus: 1385 },
-  ];
+interface ScenarioBarItem {
+  label: string;
+  gross: number;
+  wages: number;
+  surplus: number;
+}
 
+function ScenarioBarChart({ scenarios }: { scenarios: ScenarioBarItem[] }) {
   const yMax = 20000;
   const yTicks = [20000, 15000, 10000, 5000, 0];
 
@@ -2889,7 +3518,7 @@ function ScenarioBarChart() {
     <div className="relative h-64 sm:h-72 w-full flex flex-col justify-between pt-2">
       <div className="relative flex-1 flex">
         {/* Y-Axis Labels & Gridlines */}
-        <div className="flex flex-col justify-between pr-3 text-[10px] text-[#94A3B8] font-mono select-none">
+        <div className="flex flex-col justify-between pr-3 text-[10px] text-[#A3A3A3] font-mono select-none">
           {yTicks.map((val) => (
             <span key={val} className="leading-none">
               ${val.toLocaleString()}
@@ -2907,20 +3536,23 @@ function ScenarioBarChart() {
           </div>
 
           {scenarios.map((item) => {
-            const grossPct = (item.gross / yMax) * 100;
-            const wagesPct = (item.wages / yMax) * 100;
-            const surplusPct = (item.surplus / yMax) * 100;
+            const grossPct = Math.min(100, Math.max(0, (item.gross / yMax) * 100));
+            const wagesPct = Math.min(100, Math.max(0, (item.wages / yMax) * 100));
+            const surplusPct = Math.min(
+              100,
+              Math.max(0, (Math.max(0, item.surplus) / yMax) * 100)
+            );
 
             return (
               <div
                 key={item.label}
                 className="relative z-10 flex items-end justify-center gap-1.5 sm:gap-2 h-full w-1/5 px-1 group"
               >
-                {/* Gross Turnover Bar (#4A5568) */}
+                {/* Gross Turnover Bar (#4D4D4D) */}
                 <div
                   style={{ height: `${grossPct}%` }}
                   title={`Gross Turnover: $${item.gross.toLocaleString()}`}
-                  className="w-3 sm:w-5 bg-[#4A5568] hover:brightness-110 rounded-t-md transition-all"
+                  className="w-3 sm:w-5 bg-[#4D4D4D] hover:brightness-110 rounded-t-md transition-all"
                 />
                 {/* Wages Roster Bar (#F43F5E) */}
                 <div
@@ -2941,7 +3573,7 @@ function ScenarioBarChart() {
       </div>
 
       {/* X-Axis Labels */}
-      <div className="flex pl-12 pt-2.5 justify-around text-[10px] text-[#94A3B8] text-center">
+      <div className="flex pl-12 pt-2.5 justify-around text-[10px] text-[#A3A3A3] text-center">
         {scenarios.map((s) => (
           <div key={s.label} className="w-1/5 truncate px-0.5">
             {s.label}
@@ -2952,16 +3584,28 @@ function ScenarioBarChart() {
   );
 }
 
-function CostAllocationDoughnut() {
-  // Data: Net Surplus 4475 (40.7%), Direct Wages 3235 (29.4%), Production & AV 2150 (19.5%), Beverage COGS & Bar 1140 (10.4%)
+function CostAllocationDoughnut({
+  surplus,
+  wages,
+  overheads,
+  cogs,
+  gross,
+}: {
+  surplus: number;
+  wages: number;
+  overheads: number;
+  cogs: number;
+  gross: number;
+}) {
   const segments = [
-    { label: 'Net Surplus', value: 4475, color: '#FFCC00' },
-    { label: 'Direct Wages', value: 3235, color: '#F43F5E' },
-    { label: 'Production & AV', value: 2150, color: '#3B82F6' },
-    { label: 'Beverage COGS & Bar', value: 1140, color: '#10B981' },
+    { label: 'Net Surplus', value: Math.round(surplus), color: '#FFCC00' },
+    { label: 'Direct Wages', value: Math.round(wages), color: '#F43F5E' },
+    { label: 'Direct Overheads', value: Math.round(overheads), color: '#3B82F6' },
+    { label: 'Beverage COGS & Bar', value: Math.round(cogs), color: '#10B981' },
   ];
 
-  const total = 11000;
+  const total = Math.max(1, surplus + wages + overheads + cogs);
+  const surplusPct = gross > 0 ? (surplus / gross) * 100 : 0;
   const radius = 72;
   const circumference = 2 * Math.PI * radius;
 
@@ -2996,8 +3640,12 @@ function CostAllocationDoughnut() {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
         <span className="text-[10px] uppercase tracking-wider text-trough-muted">Target Gross</span>
-        <span className="text-lg font-extrabold font-mono text-white">$11,000</span>
-        <span className="text-[10px] text-trough-yellow font-semibold">40.7% Surplus</span>
+        <span className="text-lg font-extrabold font-mono text-white">
+          ${Math.round(gross).toLocaleString()}
+        </span>
+        <span className="text-[10px] text-trough-yellow font-semibold">
+          {surplusPct.toFixed(1)}% Surplus
+        </span>
       </div>
     </div>
   );

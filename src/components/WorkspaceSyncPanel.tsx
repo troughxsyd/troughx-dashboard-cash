@@ -604,7 +604,7 @@ export function WorkspaceSyncPanel({
   return (
     <div className="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-5">
       {/* Top Bar: Workspace Connection Status */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
         <div className="flex items-start sm:items-center gap-3">
           <div className="p-2.5 rounded-xl bg-trough-yellow/10 border border-trough-yellow/30 text-trough-yellow text-lg">
             <i className="fa-solid fa-cloud-arrow-up"></i>
@@ -632,7 +632,7 @@ export function WorkspaceSyncPanel({
             </div>
             <p className="text-xs text-trough-muted mt-0.5">
               Inspect calendar labels on{' '}
-              <span className="text-slate-300 font-mono">{DEFAULT_CALENDAR_ID}</span>, sync Google
+              <span className="text-neutral-300 font-mono">{DEFAULT_CALENDAR_ID}</span>, sync Google
               Sheets, manage Google Drive files, and persist to Firebase Firestore.
             </p>
           </div>
@@ -655,7 +655,7 @@ export function WorkspaceSyncPanel({
                 type="button"
                 onClick={handleLoadCloudWorkspace}
                 disabled={isCloudBusy}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 title="Restore saved Events & IFA Roster from Firebase Firestore"
               >
                 <i className="fa-solid fa-cloud-arrow-down text-trough-yellow"></i>
@@ -679,7 +679,7 @@ export function WorkspaceSyncPanel({
           ) : (
             <button
               onClick={onSignOut}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition cursor-pointer flex items-center gap-1.5"
             >
               <i className="fa-solid fa-right-from-bracket text-rose-400"></i>
               <span>Sign Out</span>
@@ -691,28 +691,28 @@ export function WorkspaceSyncPanel({
       {/* Two-Column Integration Workspace: Left = Google Calendar, Right = Google Sheets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* 1. GOOGLE CALENDAR SYNC CARD */}
-        <div className="bg-[#151621] border border-slate-800 rounded-xl p-4 space-y-3.5 flex flex-col justify-between">
+        <div className="bg-[#1E1E1E] border border-neutral-800 rounded-xl p-4 space-y-3.5 flex flex-col justify-between">
           <div className="space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold text-white flex items-center gap-2">
                 <i className="fa-regular fa-calendar-check text-trough-yellow"></i>
                 1. Google Calendar Confirmed Events &amp; Label Scanner
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-trough-yellow border border-slate-700">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-trough-yellow border border-neutral-700">
                 ID: {decodedCalendarId}
               </span>
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-[11px] text-slate-400">
+                <label className="block text-[11px] text-neutral-400">
                   Target Google Calendar URL or Calendar ID
                 </label>
                 {accessibleCalendars.length > 0 && (
                   <select
                     value={decodedCalendarId}
                     onChange={(e) => setCalendarInput(e.target.value)}
-                    className="bg-[#10111A] border border-slate-700 rounded px-2 py-0.5 text-[11px] text-trough-yellow font-mono focus:outline-none"
+                    className="bg-[#171717] border border-neutral-700 rounded px-2 py-0.5 text-[11px] text-trough-yellow font-mono focus:outline-none"
                     title="Switch between calendars in your Google account"
                   >
                     {accessibleCalendars.map((c) => (
@@ -728,20 +728,20 @@ export function WorkspaceSyncPanel({
                 value={calendarInput}
                 onChange={(e) => setCalendarInput(e.target.value)}
                 placeholder="https://calendar.google.com/calendar/u/0?cid=YnJlbnRAdHJvdWdoeHN5ZG5leS5jb20"
-                className="w-full bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
+                className="w-full bg-[#171717] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
               />
             </div>
 
             {/* Label Filter Mode & Lookback Window */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <div className="bg-[#10111A] p-2.5 rounded-lg border border-slate-800/80 space-y-1.5">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
+              <div className="bg-[#171717] p-2.5 rounded-lg border border-neutral-800/80 space-y-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 block font-semibold">
                   Event Label Match Rule
                 </span>
                 <select
                   value={filterMode}
                   onChange={(e) => setFilterMode(e.target.value)}
-                  className="w-full bg-[#151621] border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-trough-yellow focus:outline-none"
+                  className="w-full bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-xs text-white focus:border-trough-yellow focus:outline-none"
                 >
                   <option value="strict_label">
                     Label &ldquo;confirmed&rdquo; (Title / Notes / Tag)
@@ -758,20 +758,20 @@ export function WorkspaceSyncPanel({
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-slate-500 leading-tight">
+                <p className="text-[10px] text-neutral-500 leading-tight">
                   Checks event titles, descriptions, color labels &amp; status tags.
                 </p>
               </div>
 
-              <div className="bg-[#10111A] p-2.5 rounded-lg border border-slate-800/80 space-y-1.5">
+              <div className="bg-[#171717] p-2.5 rounded-lg border border-neutral-800/80 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
                     Import Mode &amp; Window
                   </span>
                   <select
                     value={lookbackDays}
                     onChange={(e) => setLookbackDays(Number(e.target.value))}
-                    className="bg-[#151621] border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-300 font-mono"
+                    className="bg-[#1E1E1E] border border-neutral-700 rounded px-1.5 py-0.5 text-[10px] text-neutral-300 font-mono"
                     title="Date scan window"
                   >
                     <option value={0}>Upcoming Only</option>
@@ -780,7 +780,7 @@ export function WorkspaceSyncPanel({
                     <option value={730}>All 2025–2027 Events</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-slate-200 pt-1">
+                <div className="flex items-center gap-3 text-xs text-neutral-200 pt-1">
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="radio"
@@ -857,7 +857,7 @@ export function WorkspaceSyncPanel({
             )}
           </div>
 
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80">
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/80">
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
@@ -887,7 +887,7 @@ export function WorkspaceSyncPanel({
                   }
                 }}
                 disabled={isSyncingCalendar}
-                className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-trough-yellow border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-trough-yellow border border-neutral-700 transition cursor-pointer flex items-center gap-1.5"
               >
                 <i className="fa-solid fa-magnifying-glass-chart"></i>
                 <span>
@@ -901,7 +901,7 @@ export function WorkspaceSyncPanel({
             <button
               type="button"
               onClick={onResetDefaultEvents}
-              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition cursor-pointer"
             >
               Restore Baseline
             </button>
@@ -909,7 +909,7 @@ export function WorkspaceSyncPanel({
         </div>
 
         {/* 2. GOOGLE SHEETS CONNECTION CARD */}
-        <div className="bg-[#151621] border border-slate-800 rounded-xl p-4 space-y-3.5 flex flex-col justify-between">
+        <div className="bg-[#1E1E1E] border border-neutral-800 rounded-xl p-4 space-y-3.5 flex flex-col justify-between">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-2">
@@ -931,7 +931,7 @@ export function WorkspaceSyncPanel({
 
             {/* Connect Existing Sheet Input */}
             <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400">
+              <label className="block text-[11px] text-neutral-400">
                 Connect Existing Google Sheet (Paste Sheet URL or Spreadsheet ID)
               </label>
               <div className="flex gap-2">
@@ -940,13 +940,13 @@ export function WorkspaceSyncPanel({
                   value={sheetInput}
                   onChange={(e) => setSheetInput(e.target.value)}
                   placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
-                  className="flex-1 bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
+                  className="flex-1 bg-[#171717] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={handleConnectSheet}
                   disabled={isSheetBusy}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelSlate text-white border border-slate-600 transition cursor-pointer whitespace-nowrap disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelLight text-white border border-neutral-600 transition cursor-pointer whitespace-nowrap disabled:opacity-50"
                 >
                   Connect Sheet
                 </button>
@@ -955,7 +955,7 @@ export function WorkspaceSyncPanel({
 
             {/* Connected Sheet Tab Selector & Sync Controls */}
             {connectedSheet ? (
-              <div className="bg-[#10111A] p-3 rounded-lg border border-emerald-500/30 space-y-2.5">
+              <div className="bg-[#171717] p-3 rounded-lg border border-emerald-500/30 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block">
@@ -966,11 +966,11 @@ export function WorkspaceSyncPanel({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-[11px] text-slate-400">Target Tab:</label>
+                    <label className="text-[11px] text-neutral-400">Target Tab:</label>
                     <select
                       value={selectedTab}
                       onChange={(e) => setSelectedTab(e.target.value)}
-                      className="bg-[#151621] border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
+                      className="bg-[#1E1E1E] border border-neutral-700 rounded px-2 py-1 text-xs text-white font-mono focus:border-trough-yellow focus:outline-none"
                     >
                       {connectedSheet.sheets.map((s) => (
                         <option key={s.sheetId} value={s.title}>
@@ -986,7 +986,7 @@ export function WorkspaceSyncPanel({
                     type="button"
                     onClick={handleReadEventsFromSheet}
                     disabled={isSheetBusy}
-                    className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
                   >
                     <i className="fa-solid fa-download text-blue-400"></i>
                     <span>Pull Events from Tab</span>
@@ -1004,7 +1004,7 @@ export function WorkspaceSyncPanel({
                     type="button"
                     onClick={() => requestWriteToTab('roster')}
                     disabled={isSheetBusy}
-                    className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
                   >
                     <i className="fa-solid fa-users-gear text-trough-yellow"></i>
                     <span>Push IFA Roster</span>
@@ -1013,7 +1013,7 @@ export function WorkspaceSyncPanel({
                     type="button"
                     onClick={() => requestWriteToTab('simulator')}
                     disabled={isSheetBusy}
-                    className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
                   >
                     <i className="fa-solid fa-sliders text-trough-yellow"></i>
                     <span>Push Pro-Forma</span>
@@ -1022,8 +1022,8 @@ export function WorkspaceSyncPanel({
               </div>
             ) : (
               /* Create New Master Sheet Option */
-              <div className="bg-[#10111A] p-2.5 rounded-lg border border-slate-800/80 space-y-2">
-                <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
+              <div className="bg-[#171717] p-2.5 rounded-lg border border-neutral-800/80 space-y-2">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 block font-semibold">
                   Or Generate a New Trough X Master Budget Google Sheet
                 </span>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -1031,7 +1031,7 @@ export function WorkspaceSyncPanel({
                     type="text"
                     value={newSheetTitle}
                     onChange={(e) => setNewSheetTitle(e.target.value)}
-                    className="flex-1 bg-[#151621] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:border-trough-yellow focus:outline-none"
+                    className="flex-1 bg-[#1E1E1E] border border-neutral-700 rounded-lg px-2.5 py-1 text-xs text-neutral-200 focus:border-trough-yellow focus:outline-none"
                   />
                   <button
                     type="button"
@@ -1072,7 +1072,7 @@ export function WorkspaceSyncPanel({
             )}
           </div>
 
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between text-[11px] text-neutral-400">
             <span>Exports include Venue Gross, 22% COGS, IFA Wages &amp; Surplus</span>
             {connectedSheet && (
               <button
@@ -1088,8 +1088,8 @@ export function WorkspaceSyncPanel({
       </div>
 
       {/* 3. GOOGLE DRIVE FILE BROWSER & REPORT EXPORTER */}
-      <div className="bg-[#151621] border border-slate-800 rounded-xl p-4 space-y-3.5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+      <div className="bg-[#1E1E1E] border border-neutral-800 rounded-xl p-4 space-y-3.5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
           <div>
             <span className="text-xs font-bold text-white flex items-center gap-2">
               <i className="fa-brands fa-google-drive text-trough-yellow"></i>
@@ -1115,7 +1115,7 @@ export function WorkspaceSyncPanel({
               type="button"
               onClick={() => requestDriveExport('roster_csv')}
               disabled={isDriveBusy}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition cursor-pointer flex items-center gap-1.5"
             >
               <i className="fa-solid fa-users-gear text-trough-yellow"></i>
               <span>Save IFA Roster CSV</span>
@@ -1124,7 +1124,7 @@ export function WorkspaceSyncPanel({
               type="button"
               onClick={() => requestDriveExport('simulator_csv')}
               disabled={isDriveBusy}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition cursor-pointer flex items-center gap-1.5"
             >
               <i className="fa-solid fa-sliders text-emerald-400"></i>
               <span>Save Pro-Forma CSV</span>
@@ -1133,7 +1133,7 @@ export function WorkspaceSyncPanel({
               type="button"
               onClick={() => requestDriveExport('full_json')}
               disabled={isDriveBusy}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 transition cursor-pointer flex items-center gap-1.5"
             >
               <i className="fa-solid fa-file-code text-blue-400"></i>
               <span>Backup JSON to Drive</span>
@@ -1149,7 +1149,7 @@ export function WorkspaceSyncPanel({
               value={driveSearch}
               onChange={(e) => setDriveSearch(e.target.value)}
               placeholder="Search Google Drive files by name..."
-              className="flex-1 bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+              className="flex-1 bg-[#171717] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
             />
             <select
               value={driveFilter}
@@ -1158,7 +1158,7 @@ export function WorkspaceSyncPanel({
                 setDriveFilter(next);
                 handleBrowseDrive(next);
               }}
-              className="bg-[#10111A] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+              className="bg-[#171717] border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
             >
               <option value="trough">Trough X Files</option>
               <option value="spreadsheets">Google Sheets</option>
@@ -1173,7 +1173,7 @@ export function WorkspaceSyncPanel({
               value={driveFolderId}
               onChange={(e) => setDriveFolderId(e.target.value)}
               placeholder="Optional target Drive Folder ID for exports"
-              className="w-full bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:border-trough-yellow focus:outline-none"
+              className="w-full bg-[#171717] border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-neutral-200 font-mono focus:border-trough-yellow focus:outline-none"
             />
           </div>
 
@@ -1182,7 +1182,7 @@ export function WorkspaceSyncPanel({
               type="button"
               onClick={() => handleBrowseDrive()}
               disabled={isDriveBusy}
-              className="w-full md:w-auto px-3.5 py-1.5 rounded-lg text-xs font-bold bg-trough-steelGrey hover:bg-trough-steelSlate text-white border border-slate-600 transition cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full md:w-auto px-3.5 py-1.5 rounded-lg text-xs font-bold bg-trough-steelGrey hover:bg-trough-steelLight text-white border border-neutral-600 transition cursor-pointer flex items-center justify-center gap-1.5"
             >
               <i
                 className={`fa-solid ${
@@ -1209,7 +1209,7 @@ export function WorkspaceSyncPanel({
               <button
                 type="button"
                 onClick={() => setDriveFiles([])}
-                className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                className="text-[11px] text-neutral-400 hover:text-white cursor-pointer"
               >
                 Hide List
               </button>
@@ -1219,9 +1219,9 @@ export function WorkspaceSyncPanel({
 
         {/* Drive Files Table */}
         {driveFiles.length > 0 && (
-          <div className="overflow-x-auto max-h-60 border border-slate-800 rounded-lg">
+          <div className="overflow-x-auto max-h-60 border border-neutral-800 rounded-lg">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#10111A] text-slate-400 uppercase text-[10px] sticky top-0 border-b border-slate-800">
+              <thead className="bg-[#171717] text-neutral-400 uppercase text-[10px] sticky top-0 border-b border-neutral-800">
                 <tr>
                   <th className="py-2 px-3">File Name</th>
                   <th className="py-2 px-3">Type</th>
@@ -1229,13 +1229,13 @@ export function WorkspaceSyncPanel({
                   <th className="py-2 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80 text-slate-200">
+              <tbody className="divide-y divide-neutral-800/80 text-neutral-200">
                 {driveFiles.map((file) => {
                   const isSheet =
                     file.mimeType === 'application/vnd.google-apps.spreadsheet';
                   const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
                   return (
-                    <tr key={file.id} className="hover:bg-slate-800/40">
+                    <tr key={file.id} className="hover:bg-neutral-800/40">
                       <td className="py-2 px-3 font-medium text-white flex items-center gap-2">
                         <i
                           className={`fa-solid ${
@@ -1243,19 +1243,19 @@ export function WorkspaceSyncPanel({
                               ? 'fa-file-excel text-emerald-400'
                               : isFolder
                               ? 'fa-folder text-trough-yellow'
-                              : 'fa-file-lines text-slate-400'
+                              : 'fa-file-lines text-neutral-400'
                           }`}
                         ></i>
                         <span className="truncate max-w-xs">{file.name}</span>
                       </td>
-                      <td className="py-2 px-3 font-mono text-[11px] text-slate-400">
+                      <td className="py-2 px-3 font-mono text-[11px] text-neutral-400">
                         {isSheet
                           ? 'Google Sheet'
                           : isFolder
                           ? 'Folder'
                           : file.mimeType.replace('application/', '')}
                       </td>
-                      <td className="py-2 px-3 font-mono text-[11px] text-slate-400">
+                      <td className="py-2 px-3 font-mono text-[11px] text-neutral-400">
                         {file.modifiedTime
                           ? new Date(file.modifiedTime).toLocaleDateString('en-AU')
                           : '—'}
@@ -1294,7 +1294,7 @@ export function WorkspaceSyncPanel({
                             href={file.webViewLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] inline-block"
+                            className="px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[10px] inline-block"
                           >
                             Open
                           </a>
@@ -1322,8 +1322,8 @@ export function WorkspaceSyncPanel({
           Displays all discovered labels, color tags, statuses, and raw events
          ===================================================================== */}
       {showLabelInspector && (
-        <div className="bg-[#14151F] border border-trough-yellow/40 rounded-xl p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+        <div className="bg-[#1C1C1C] border border-trough-yellow/40 rounded-xl p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-3">
             <div>
               <h4 className="text-xs font-bold text-white flex items-center gap-2">
                 <i className="fa-solid fa-tags text-trough-yellow"></i>
@@ -1352,7 +1352,7 @@ export function WorkspaceSyncPanel({
               <button
                 type="button"
                 onClick={() => setShowLabelInspector(false)}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs cursor-pointer"
+                className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-xs cursor-pointer"
               >
                 Close
               </button>
@@ -1361,11 +1361,11 @@ export function WorkspaceSyncPanel({
 
           {/* Discovered Label Pills */}
           <div className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold block">
               Discovered Labels &amp; Status Tags (Click to Filter &amp; Pull):
             </span>
             {discoveredLabels.length === 0 ? (
-              <p className="text-xs text-slate-400 font-mono">
+              <p className="text-xs text-neutral-400 font-mono">
                 No upcoming events or labels scanned yet. Sign in and click &ldquo;Check Calendar
                 Event Labels&rdquo;.
               </p>
@@ -1388,7 +1388,7 @@ export function WorkspaceSyncPanel({
                           ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
                           : dl.category === 'color'
                           ? 'bg-purple-500/15 text-purple-300 border-purple-500/30 hover:bg-purple-500/25'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                          : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
                       }`}
                     >
                       <i
@@ -1413,9 +1413,9 @@ export function WorkspaceSyncPanel({
 
           {/* Detailed Event-by-Event Label Inspection Table */}
           {inspectedEvents.length > 0 && (
-            <div className="overflow-x-auto max-h-72 border border-slate-800 rounded-lg">
+            <div className="overflow-x-auto max-h-72 border border-neutral-800 rounded-lg">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#10111A] text-slate-400 uppercase text-[10px] sticky top-0 border-b border-slate-800">
+                <thead className="bg-[#171717] text-neutral-400 uppercase text-[10px] sticky top-0 border-b border-neutral-800">
                   <tr>
                     <th className="py-2 px-3">Date</th>
                     <th className="py-2 px-3">Calendar Event Summary</th>
@@ -1425,16 +1425,16 @@ export function WorkspaceSyncPanel({
                     <th className="py-2 px-3 text-right">Import</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80 text-slate-200">
+                <tbody className="divide-y divide-neutral-800/80 text-neutral-200">
                   {inspectedEvents.map((item) => (
-                    <tr key={item.raw.id} className="hover:bg-slate-800/40">
-                      <td className="py-2 px-3 font-mono whitespace-nowrap text-slate-300">
+                    <tr key={item.raw.id} className="hover:bg-neutral-800/40">
+                      <td className="py-2 px-3 font-mono whitespace-nowrap text-neutral-300">
                         {item.dateFormatted}
                       </td>
                       <td className="py-2 px-3">
                         <div className="font-semibold text-white">{item.rawSummary}</div>
                         {item.rawDescriptionSnippet && (
-                          <div className="text-[10px] text-slate-400 truncate max-w-xs">
+                          <div className="text-[10px] text-neutral-400 truncate max-w-xs">
                             {item.rawDescriptionSnippet}
                           </div>
                         )}
@@ -1448,7 +1448,7 @@ export function WorkspaceSyncPanel({
                                 className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
                                   lbl.toLowerCase().includes('confirmed')
                                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold'
-                                    : 'bg-slate-800 text-trough-yellow border border-slate-700'
+                                    : 'bg-neutral-800 text-trough-yellow border border-neutral-700'
                                 }`}
                               >
                                 {lbl}
@@ -1456,14 +1456,14 @@ export function WorkspaceSyncPanel({
                             ))}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-500 italic">
+                          <span className="text-[10px] text-neutral-500 italic">
                             No text label in title/notes
                           </span>
                         )}
                       </td>
                       <td className="py-2 px-3">
                         {item.colorName ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-slate-200">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-neutral-800 text-[10px] font-mono text-neutral-200">
                             <span
                               className="w-2.5 h-2.5 rounded-full inline-block"
                               style={{ backgroundColor: item.colorHex || '#33b679' }}
@@ -1471,7 +1471,7 @@ export function WorkspaceSyncPanel({
                             {item.colorName}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-slate-500 font-mono">
+                          <span className="text-[10px] text-neutral-500 font-mono">
                             Default Calendar Color
                           </span>
                         )}
@@ -1509,7 +1509,7 @@ export function WorkspaceSyncPanel({
       {pendingWrite && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-trough-cardDark border-2 border-trough-yellow rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex items-start justify-between gap-3 border-b border-neutral-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-trough-yellow/15 border border-trough-yellow/40 flex items-center justify-center text-trough-yellow">
                   <i className="fa-solid fa-file-shield"></i>
@@ -1523,23 +1523,23 @@ export function WorkspaceSyncPanel({
               </div>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-neutral-300 leading-relaxed">
               {pendingWrite.description}
             </p>
 
-            <div className="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs font-mono">
+            <div className="bg-[#1E1E1E] p-3 rounded-xl border border-neutral-800 space-y-1.5 text-xs font-mono">
               <div className="flex justify-between">
-                <span className="text-slate-400">Target File / Sheet:</span>
+                <span className="text-neutral-400">Target File / Sheet:</span>
                 <span className="text-white font-semibold truncate max-w-[220px]">
                   {pendingWrite.targetSheetTitle}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Destination / Type:</span>
+                <span className="text-neutral-400">Destination / Type:</span>
                 <span className="text-trough-yellow">{pendingWrite.targetTabName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Records Affected:</span>
+                <span className="text-neutral-400">Records Affected:</span>
                 <span className="text-emerald-400">{pendingWrite.rowCount} item(s)</span>
               </div>
             </div>
@@ -1548,7 +1548,7 @@ export function WorkspaceSyncPanel({
               <button
                 type="button"
                 onClick={() => setPendingWrite(null)}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+                className="px-3.5 py-2 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 transition cursor-pointer"
               >
                 Cancel
               </button>

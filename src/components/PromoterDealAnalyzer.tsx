@@ -122,8 +122,8 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       {/* Top Deal Structuring Sliders */}
-      <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
           <div>
             <div className="flex items-center gap-2">
               <Scale className="w-4 h-4 text-[#FFCC00]" />
@@ -131,12 +131,12 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                 Promoter Deal Structuring Sliders & Model Comparison
               </h2>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-neutral-400 mt-0.5">
               Slide attendance, venue ticket clip ($), and booking deposit ($) to compare Promoter Hosted vs. Trough Owned returns.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs text-slate-200">
+          <div className="flex items-center gap-2 font-mono text-xs text-neutral-200">
             <span>Base Breakeven: {hostedMetrics.baseBreakevenAttendees} Pax</span>
             <span>·</span>
             <span className="text-[#FFCC00] font-bold">
@@ -148,7 +148,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
         {/* Interactive Deal Sliders Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Slider 1: Attendance Volume */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-4 space-y-2.5">
+          <div className="bg-neutral-950/80 border border-neutral-800 rounded-lg p-4 space-y-2.5">
             <div className="flex justify-between text-xs">
               <label className="font-semibold text-white">Simulated Attendance</label>
               <span className="font-mono tabular-nums text-[#FFCC00] font-bold">
@@ -164,9 +164,9 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
               onChange={(e) =>
                 onAttendanceChange && onAttendanceChange(parseInt(e.target.value, 10))
               }
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
+              className="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
             />
-            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+            <div className="flex justify-between text-[11px] text-neutral-400 font-mono">
               <span>60 Pax</span>
               <span>144 Base B/E</span>
               <span>300 Cap</span>
@@ -174,7 +174,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
           </div>
 
           {/* Slider 2: Venue Ticket Clip ($/ticket) */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-4 space-y-2.5">
+          <div className="bg-neutral-950/80 border border-neutral-800 rounded-lg p-4 space-y-2.5">
             <div className="flex justify-between text-xs">
               <label className="font-semibold text-white">Venue Ticket Clip ($/tix)</label>
               <span className="font-mono tabular-nums text-[#FFCC00] font-bold">
@@ -193,9 +193,9 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   promoterTicketClip: parseFloat(e.target.value),
                 })
               }
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
+              className="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
             />
-            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+            <div className="flex justify-between text-[11px] text-neutral-400 font-mono">
               <span>$0</span>
               <span className="text-white">Standard: $5.00/tix</span>
               <span>$20</span>
@@ -203,7 +203,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
           </div>
 
           {/* Slider 3: Mandatory Booking Deposit ($550) */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-4 space-y-2.5">
+          <div className="bg-neutral-950/80 border border-neutral-800 rounded-lg p-4 space-y-2.5">
             <div className="flex justify-between items-center text-xs">
               <label className="font-semibold text-white">Booking Deposit ($)</label>
               <div className="flex items-center gap-2">
@@ -222,8 +222,8 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   }
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold cursor-pointer ${
                     venueConfig.collectPromoterDeposit
-                      ? 'bg-[#FFCC00] text-slate-950'
-                      : 'bg-slate-800 text-slate-400'
+                      ? 'bg-[#FFCC00] text-neutral-950'
+                      : 'bg-neutral-800 text-neutral-400'
                   }`}
                 >
                   {venueConfig.collectPromoterDeposit ? 'ON' : 'OFF'}
@@ -243,9 +243,9 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   collectPromoterDeposit: true,
                 })
               }
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-white"
+              className="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
             />
-            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+            <div className="flex justify-between text-[11px] text-neutral-400 font-mono">
               <span>$0</span>
               <span className="text-[#FFCC00]">Standard: $550 (121 Pax B/E)</span>
               <span>$1,500</span>
@@ -254,7 +254,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
         </div>
 
         {/* Visual Comparison Bar Graph: Hosted Venue vs Owned Venue vs Promoter */}
-        <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-4 space-y-3">
+        <div className="bg-neutral-950/90 border border-neutral-800 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
               <BarChart2 className="w-4 h-4 text-[#FFCC00]" />
@@ -271,7 +271,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
             {/* Bar 1: Model 1 Hosted Venue Net */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs font-mono tabular-nums">
-                <span className="text-slate-300">
+                <span className="text-neutral-300">
                   1. Venue Net Profit — Promoter Hosted (${venueConfig.promoterTicketClip.toFixed(2)} Clip)
                 </span>
                 <span className="text-white font-bold">
@@ -279,7 +279,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   {formatPercent(hostedMetrics.wageRatioPercent)})
                 </span>
               </div>
-              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div className="w-full bg-neutral-800 h-2.5 rounded-full overflow-hidden">
                 <div
                   style={{
                     width: `${Math.min(
@@ -297,7 +297,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
             {/* Bar 2: Model 2 Trough Owned Venue Net */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs font-mono tabular-nums">
-                <span className="text-slate-300">
+                <span className="text-neutral-300">
                   2. Venue Net Profit — Trough Owned Party (100% Retention)
                 </span>
                 <span className="text-[#FFCC00] font-bold">
@@ -305,7 +305,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   {formatPercent(ownedMetrics.wageRatioPercent)})
                 </span>
               </div>
-              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div className="w-full bg-neutral-800 h-2.5 rounded-full overflow-hidden">
                 <div
                   style={{
                     width: `${Math.min(
@@ -323,15 +323,15 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
             {/* Bar 3: External Promoter Counterparty Net */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs font-mono tabular-nums">
-                <span className="text-slate-300">
+                <span className="text-neutral-300">
                   3. External Promoter Net Profit (Counterparty P&L)
                 </span>
-                <span className="text-slate-200 font-bold">
+                <span className="text-neutral-200 font-bold">
                   {formatAUD(hostedMetrics.promoterNetProfit, true)} (Promoter B/E:{' '}
                   {promoterBreakevenPax} Pax)
                 </span>
               </div>
-              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div className="w-full bg-neutral-800 h-2.5 rounded-full overflow-hidden">
                 <div
                   style={{
                     width: `${Math.min(
@@ -343,7 +343,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                     )}%`,
                   }}
                   className={`h-full transition-all ${
-                    hostedMetrics.promoterNetProfit >= 0 ? 'bg-slate-400' : 'bg-red-500'
+                    hostedMetrics.promoterNetProfit >= 0 ? 'bg-neutral-400' : 'bg-red-500'
                   }`}
                 />
               </div>
@@ -355,9 +355,9 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
       {/* Side-by-Side Commercial Model Matrix: Hosted vs Owned vs External Promoter */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Card 1: Venue Under Model 1 (Promoter Hosted) */}
-        <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 flex flex-col justify-between space-y-4">
+        <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 flex flex-col justify-between space-y-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-white font-semibold">
                   Model 1 · Venue Perspective
@@ -366,21 +366,21 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   Promoter Hosted Night (${venueConfig.promoterTicketClip.toFixed(2)} Clip)
                 </h3>
               </div>
-              <span className="text-xs font-mono text-slate-300">
+              <span className="text-xs font-mono text-neutral-300">
                 {summary.projectedAttendance} Pax
               </span>
             </div>
 
             <div className="space-y-2 text-xs font-mono tabular-nums">
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>Ticket Clip (${venueConfig.promoterTicketClip.toFixed(2)}/pax):</span>
                 <span>{formatAUD(hostedMetrics.venueRetainedTicketRevenue, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>100% Bar Turnover:</span>
                 <span>{formatAUD(hostedMetrics.grossBarRevenue, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>100% Cloakroom ($5/item):</span>
                 <span>{formatAUD(hostedMetrics.grossCloakRevenue, true)}</span>
               </div>
@@ -388,33 +388,33 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                 <span>Mandatory Booking Deposit:</span>
                 <span>+{formatAUD(hostedMetrics.bookingDepositCollected, true)}</span>
               </div>
-              <div className="flex justify-between font-bold text-white border-t border-slate-800 pt-1.5">
+              <div className="flex justify-between font-bold text-white border-t border-neutral-800 pt-1.5">
                 <span>Total Venue Gross Revenue:</span>
                 <span>{formatAUD(hostedMetrics.totalVenueGrossRevenue, true)}</span>
               </div>
 
-              <div className="flex justify-between text-slate-400 pt-1">
+              <div className="flex justify-between text-neutral-400 pt-1">
                 <span>Beverage COGS ({formatPercent(hostedMetrics.beverageCogsPercent)}):</span>
                 <span>-{formatAUD(hostedMetrics.beverageCogsAmount, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Merchant Processing (1.5%):</span>
                 <span>-{formatAUD(hostedMetrics.merchantProcessingCost, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Full IFA Roster (+11.5% Super):</span>
                 <span>-{formatAUD(hostedMetrics.totalStaffingCost, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Waste Reinstatement:</span>
                 <span>-{formatAUD(hostedMetrics.venueDirectOverheads, true)}</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-800 space-y-2">
+          <div className="pt-3 border-t border-neutral-800 space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold uppercase text-slate-200">
+              <span className="text-xs font-bold uppercase text-neutral-200">
                 Venue Net Profit
               </span>
               <span
@@ -426,7 +426,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
               </span>
             </div>
             <div className="flex justify-between items-center text-[11px] font-mono">
-              <span className="text-slate-400">Wage Ratio Target (&lt;50%):</span>
+              <span className="text-neutral-400">Wage Ratio Target (&lt;50%):</span>
               <span
                 className={
                   hostedMetrics.isWageRatioCompliant
@@ -442,9 +442,9 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
         </div>
 
         {/* Card 2: Venue Under Model 2 (Trough Owned Party) */}
-        <div className="bg-slate-900/80 border border-[#FFCC00]/50 rounded-lg p-5 flex flex-col justify-between space-y-4">
+        <div className="bg-neutral-900/80 border border-[#FFCC00]/50 rounded-lg p-5 flex flex-col justify-between space-y-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-[#FFCC00] font-bold">
                   Model 2 · Venue Perspective
@@ -453,51 +453,51 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
                   Trough Owned Party (100% Retention)
                 </h3>
               </div>
-              <span className="text-xs font-mono text-slate-300">
+              <span className="text-xs font-mono text-neutral-300">
                 {summary.projectedAttendance} Pax
               </span>
             </div>
 
             <div className="space-y-2 text-xs font-mono tabular-nums">
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>100% Ticket Box Office:</span>
                 <span>{formatAUD(ownedMetrics.venueRetainedTicketRevenue, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>100% Bar Turnover:</span>
                 <span>{formatAUD(ownedMetrics.grossBarRevenue, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>100% Cloakroom ($5/item):</span>
                 <span>{formatAUD(ownedMetrics.grossCloakRevenue, true)}</span>
               </div>
-              <div className="flex justify-between font-bold text-white border-t border-slate-800 pt-1.5">
+              <div className="flex justify-between font-bold text-white border-t border-neutral-800 pt-1.5">
                 <span>Total Venue Gross Revenue:</span>
                 <span>{formatAUD(ownedMetrics.totalVenueGrossRevenue, true)}</span>
               </div>
 
-              <div className="flex justify-between text-slate-400 pt-1">
+              <div className="flex justify-between text-neutral-400 pt-1">
                 <span>Beverage COGS ({formatPercent(ownedMetrics.beverageCogsPercent)}):</span>
                 <span>-{formatAUD(ownedMetrics.beverageCogsAmount, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Payment Processing (2.5%):</span>
                 <span>-{formatAUD(ownedMetrics.merchantProcessingCost, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Full IFA Roster (+11.5% Super):</span>
                 <span>-{formatAUD(ownedMetrics.totalStaffingCost, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Direct Overheads (DJs/AV/Mktg/Waste):</span>
                 <span>-{formatAUD(ownedMetrics.venueDirectOverheads, true)}</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-800 space-y-2">
+          <div className="pt-3 border-t border-neutral-800 space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold uppercase text-slate-200">
+              <span className="text-xs font-bold uppercase text-neutral-200">
                 Venue Net Profit
               </span>
               <span
@@ -509,7 +509,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
               </span>
             </div>
             <div className="flex justify-between items-center text-[11px] font-mono">
-              <span className="text-slate-400">Wage Ratio Target (&lt;30%):</span>
+              <span className="text-neutral-400">Wage Ratio Target (&lt;30%):</span>
               <span
                 className={
                   ownedMetrics.isWageRatioCompliant
@@ -525,54 +525,54 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
         </div>
 
         {/* Card 3: External Promoter P&L (Hosted Deal Counterparty) */}
-        <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 flex flex-col justify-between space-y-4">
+        <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 flex flex-col justify-between space-y-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5">
               <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-400 font-semibold">
                   External Promoter P&L
                 </span>
                 <h3 className="text-sm font-bold text-white">
                   Promoter Counterparty Economics
                 </h3>
               </div>
-              <span className="text-xs font-mono text-slate-300">
+              <span className="text-xs font-mono text-neutral-300">
                 B/E: {promoterBreakevenPax} Pax
               </span>
             </div>
 
             <div className="space-y-2 text-xs font-mono tabular-nums">
-              <div className="flex justify-between text-slate-300">
+              <div className="flex justify-between text-neutral-300">
                 <span>Gross Ticket Box Office:</span>
                 <span>{formatAUD(hostedMetrics.grossTicketTurnover, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Less: Trough Venue Clip ($5/tix):</span>
                 <span>-{formatAUD(hostedMetrics.venueRetainedTicketRevenue, true)}</span>
               </div>
-              <div className="flex justify-between font-bold text-white border-t border-slate-800 pt-1.5">
+              <div className="flex justify-between font-bold text-white border-t border-neutral-800 pt-1.5">
                 <span>Net Ticket Balance Retained:</span>
                 <span>{formatAUD(hostedMetrics.promoterRetainedTicketRevenue, true)}</span>
               </div>
 
-              <div className="flex justify-between text-slate-500 pt-1">
+              <div className="flex justify-between text-neutral-500 pt-1">
                 <span>Bar & Cloakroom Share:</span>
                 <span>$0.00 (100% Venue)</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Promoter DJs, Sound & Marketing:</span>
                 <span>-{formatAUD(hostedMetrics.promoterDirectExpenses, true)}</span>
               </div>
-              <div className="flex justify-between text-slate-400">
+              <div className="flex justify-between text-neutral-400">
                 <span>Mandatory Booking Deposit:</span>
                 <span>-{formatAUD(hostedMetrics.bookingDepositCollected, true)}</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-800 space-y-2">
+          <div className="pt-3 border-t border-neutral-800 space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold uppercase text-slate-200">
+              <span className="text-xs font-bold uppercase text-neutral-200">
                 Promoter Net Profit
               </span>
               <span
@@ -586,7 +586,7 @@ export const PromoterDealAnalyzer: React.FC<Props> = ({
               </span>
             </div>
             <div className="flex justify-between items-center text-[11px] font-mono">
-              <span className="text-slate-400">Owned vs Hosted Venue Upside:</span>
+              <span className="text-neutral-400">Owned vs Hosted Venue Upside:</span>
               <span className="text-[#FFCC00] font-bold">
                 +{formatAUD(ownedMetrics.venueNetProfit - hostedMetrics.venueNetProfit)}
               </span>

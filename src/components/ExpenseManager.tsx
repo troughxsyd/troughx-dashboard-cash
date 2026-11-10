@@ -92,20 +92,20 @@ export const ExpenseManager: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       {/* Section 1: Staffing Roster & IFA Wage Rates (BOOT Test Compliant) */}
-      <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
           <div>
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-[#FFCC00]" />
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">
                 Staffing Roster & IFA Wage Rates (BOOT Test Compliant)
               </h2>
-              <span className="text-slate-600">·</span>
-              <span className="text-xs text-slate-300">
+              <span className="text-neutral-600">·</span>
+              <span className="text-xs text-neutral-300">
                 11.5% Super Guarantee on Eligible Roles
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-neutral-400 mt-0.5">
               Slide shift hours or headcount per role. Security auto-scales at 1:100 ratio (2 guards &lt;250 pax, 3 guards at 250+ pax).
             </p>
           </div>
@@ -128,7 +128,7 @@ export const ExpenseManager: React.FC<Props> = ({
                   {summary.wageTargetThresholdPercent.toFixed(0)}%)
                 </span>
               </div>
-              <div className="text-[11px] text-slate-300">
+              <div className="text-[11px] text-neutral-300">
                 Base Wages: {formatAUD(summary.baseWagesTotal, true)} + Super (11.5%):{' '}
                 {formatAUD(summary.superannuationTotal, true)} ={' '}
                 <strong className="text-white">{formatAUD(summary.totalStaffingCost, true)}</strong>
@@ -137,7 +137,7 @@ export const ExpenseManager: React.FC<Props> = ({
 
             <button
               onClick={handleAddRole}
-              className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 text-xs font-bold text-neutral-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Role</span>
@@ -146,7 +146,7 @@ export const ExpenseManager: React.FC<Props> = ({
         </div>
 
         {/* Visual Wage Ratio Thermometer & Role Cost Breakdown Graph */}
-        <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-4 space-y-3">
+        <div className="bg-neutral-950/90 border border-neutral-800 rounded-lg p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
             <span className="text-white font-bold uppercase">
               IFA Roster Share by Role & Wage Ratio Threshold (&lt;{summary.wageTargetThresholdPercent.toFixed(0)}% Max)
@@ -156,7 +156,7 @@ export const ExpenseManager: React.FC<Props> = ({
             </span>
           </div>
 
-          <div className="w-full h-4 bg-slate-800 rounded-md overflow-hidden flex">
+          <div className="w-full h-4 bg-neutral-800 rounded-md overflow-hidden flex">
             {staffRoster.map((role, idx) => {
               const hc = role.autoScaleSecurity
                 ? summary.securityGuardsRequired
@@ -173,12 +173,12 @@ export const ExpenseManager: React.FC<Props> = ({
               const barPalette = [
                 'bg-[#FFCC00]',
                 'bg-white',
-                'bg-slate-400',
+                'bg-neutral-400',
                 'bg-[#FFCC00]/75',
-                'bg-slate-300',
-                'bg-slate-500',
+                'bg-neutral-300',
+                'bg-neutral-500',
                 'bg-[#FFCC00]/50',
-                'bg-slate-600',
+                'bg-neutral-600',
               ];
 
               return (
@@ -186,13 +186,13 @@ export const ExpenseManager: React.FC<Props> = ({
                   key={role.id}
                   style={{ width: `${pct}%` }}
                   title={`${role.roleName}: ${formatAUD(tot, true)} (${pct.toFixed(1)}% of payroll)`}
-                  className={`${barPalette[idx % barPalette.length]} h-full border-r border-slate-950 transition-all`}
+                  className={`${barPalette[idx % barPalette.length]} h-full border-r border-neutral-950 transition-all`}
                 />
               );
             })}
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono text-slate-300">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono text-neutral-300">
             {staffRoster.map((role) => {
               const hc = role.autoScaleSecurity
                 ? summary.securityGuardsRequired
@@ -213,7 +213,7 @@ export const ExpenseManager: React.FC<Props> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-700/80 text-slate-300 font-mono uppercase tracking-wider text-[11px]">
+              <tr className="border-b border-neutral-700/80 text-neutral-300 font-mono uppercase tracking-wider text-[11px]">
                 <th className="py-2.5 px-3">Role / Position</th>
                 <th className="py-2.5 px-3">IFA Rate ($/hr)</th>
                 <th className="py-2.5 px-3">Super (11.5%)</th>
@@ -225,7 +225,7 @@ export const ExpenseManager: React.FC<Props> = ({
                 <th className="py-2.5 px-2 text-center w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-neutral-800">
               {staffRoster.map((role) => {
                 const effectiveStaff = role.autoScaleSecurity
                   ? summary.securityGuardsRequired
@@ -235,7 +235,7 @@ export const ExpenseManager: React.FC<Props> = ({
                 const totalRoleCost = baseWage + superAmt;
 
                 return (
-                  <tr key={role.id} className="hover:bg-slate-800/40 transition-colors">
+                  <tr key={role.id} className="hover:bg-neutral-800/40 transition-colors">
                     {/* Role Name & Scope */}
                     <td className="py-2.5 px-3">
                       <input
@@ -244,9 +244,9 @@ export const ExpenseManager: React.FC<Props> = ({
                         onChange={(e) =>
                           handleUpdateRole(role.id, 'roleName', e.target.value)
                         }
-                        className="w-full bg-slate-950 border border-slate-700/80 rounded px-2 py-1 text-white text-xs font-bold focus:outline-none focus:border-[#FFCC00]"
+                        className="w-full bg-neutral-950 border border-neutral-700/80 rounded px-2 py-1 text-white text-xs font-bold focus:outline-none focus:border-[#FFCC00]"
                       />
-                      <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[260px]">
+                      <div className="text-[11px] text-neutral-400 mt-0.5 truncate max-w-[260px]">
                         {role.dutyScope}
                       </div>
                     </td>
@@ -254,7 +254,7 @@ export const ExpenseManager: React.FC<Props> = ({
                     {/* IFA Hourly Rate */}
                     <td className="py-2.5 px-3">
                       <div className="relative">
-                        <span className="absolute left-2 top-1 text-slate-400 font-mono">
+                        <span className="absolute left-2 top-1 text-neutral-400 font-mono">
                           $
                         </span>
                         <input
@@ -269,7 +269,7 @@ export const ExpenseManager: React.FC<Props> = ({
                               Math.max(0, parseFloat(e.target.value) || 0)
                             )
                           }
-                          className="w-20 bg-slate-950 border border-slate-700/80 rounded pl-5 pr-2 py-1 text-white text-xs font-mono tabular-nums focus:outline-none focus:border-[#FFCC00]"
+                          className="w-20 bg-neutral-950 border border-neutral-700/80 rounded pl-5 pr-2 py-1 text-white text-xs font-mono tabular-nums focus:outline-none focus:border-[#FFCC00]"
                         />
                       </div>
                     </td>
@@ -285,7 +285,7 @@ export const ExpenseManager: React.FC<Props> = ({
                             e.target.value === 'eligible'
                           )
                         }
-                        className="bg-slate-950 border border-slate-700/80 rounded px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
+                        className="bg-neutral-950 border border-neutral-700/80 rounded px-2 py-1 text-neutral-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
                       >
                         <option value="eligible">+11.5% Super</option>
                         <option value="exempt">Exempt (Agency)</option>
@@ -297,7 +297,7 @@ export const ExpenseManager: React.FC<Props> = ({
                       {role.autoScaleSecurity ? (
                         <div className="flex items-center gap-1 font-mono tabular-nums text-[#FFCC00] font-bold">
                           <span>{effectiveStaff} Guards</span>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-neutral-400">
                             (1:100)
                           </span>
                         </div>
@@ -316,7 +316,7 @@ export const ExpenseManager: React.FC<Props> = ({
                                 parseInt(e.target.value, 10)
                               )
                             }
-                            className="w-16 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-white"
+                            className="w-16 h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white"
                           />
                           <span className="font-mono tabular-nums text-white font-bold w-4">
                             {role.headcount}
@@ -341,7 +341,7 @@ export const ExpenseManager: React.FC<Props> = ({
                               parseFloat(e.target.value)
                             )
                           }
-                          className="w-24 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
+                          className="w-24 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
                         />
                         <span className="font-mono tabular-nums text-[#FFCC00] font-bold w-12">
                           {role.hours.toFixed(1)}h
@@ -350,12 +350,12 @@ export const ExpenseManager: React.FC<Props> = ({
                     </td>
 
                     {/* Base Wage */}
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-slate-200">
+                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-neutral-200">
                       {formatAUD(baseWage, true)}
                     </td>
 
                     {/* Super */}
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-slate-400">
+                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-neutral-400">
                       {role.superEligible ? formatAUD(superAmt, true) : '—'}
                     </td>
 
@@ -369,7 +369,7 @@ export const ExpenseManager: React.FC<Props> = ({
                       <button
                         onClick={() => handleDeleteRole(role.id)}
                         disabled={staffRoster.length <= 1}
-                        className="p-1 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-30 cursor-pointer"
+                        className="p-1 text-neutral-500 hover:text-red-400 transition-colors disabled:opacity-30 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -383,15 +383,15 @@ export const ExpenseManager: React.FC<Props> = ({
       </div>
 
       {/* Section 2: Direct Event Overheads with Sliders */}
-      <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">
                 Direct Event Overheads & Production Costs
               </h2>
-              <span className="text-slate-600">·</span>
-              <span className="text-xs text-slate-300">
+              <span className="text-neutral-600">·</span>
+              <span className="text-xs text-neutral-300">
                 {isHosted
                   ? 'Venue Absorbs Waste Reinstatement; Promoter Pays DJs, Sound & Marketing'
                   : 'Trough Owned Party: Venue Covers DJs (~$900), AV (~$350), Marketing (~$400), Staging (~$250) & Waste'}
@@ -401,13 +401,13 @@ export const ExpenseManager: React.FC<Props> = ({
 
           <div className="flex items-center gap-3">
             <div className="text-right font-mono tabular-nums text-xs">
-              <span className="text-slate-300">Venue Direct Overheads: </span>
+              <span className="text-neutral-300">Venue Direct Overheads: </span>
               <strong className="text-[#FFCC00]">{formatAUD(summary.venueDirectOverheads, true)}</strong>
             </div>
 
             <button
               onClick={handleAddOverhead}
-              className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 text-xs font-bold text-neutral-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Overhead</span>
@@ -418,7 +418,7 @@ export const ExpenseManager: React.FC<Props> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-700/80 text-slate-300 font-mono uppercase tracking-wider text-[11px]">
+              <tr className="border-b border-neutral-700/80 text-neutral-300 font-mono uppercase tracking-wider text-[11px]">
                 <th className="py-2.5 px-3">Overhead Item</th>
                 <th className="py-2.5 px-3">Model Applicability</th>
                 <th className="py-2.5 px-3">Responsible Party</th>
@@ -427,7 +427,7 @@ export const ExpenseManager: React.FC<Props> = ({
                 <th className="py-2.5 px-2 text-center w-8"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-neutral-800">
               {overheads.map((item) => {
                 const isActive =
                   item.appliesTo === 'both' ||
@@ -437,7 +437,7 @@ export const ExpenseManager: React.FC<Props> = ({
                   <tr
                     key={item.id}
                     className={`transition-colors ${
-                      isActive ? 'hover:bg-slate-800/40' : 'opacity-40'
+                      isActive ? 'hover:bg-neutral-800/40' : 'opacity-40'
                     }`}
                   >
                     <td className="py-2.5 px-3">
@@ -447,7 +447,7 @@ export const ExpenseManager: React.FC<Props> = ({
                         onChange={(e) =>
                           handleUpdateOverhead(item.id, 'name', e.target.value)
                         }
-                        className="w-full bg-slate-950 border border-slate-700/80 rounded px-2 py-1 text-white text-xs font-medium focus:outline-none focus:border-[#FFCC00]"
+                        className="w-full bg-neutral-950 border border-neutral-700/80 rounded px-2 py-1 text-white text-xs font-medium focus:outline-none focus:border-[#FFCC00]"
                       />
                     </td>
 
@@ -461,7 +461,7 @@ export const ExpenseManager: React.FC<Props> = ({
                             e.target.value as DirectOverheadItem['appliesTo']
                           )
                         }
-                        className="bg-slate-950 border border-slate-700/80 rounded px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
+                        className="bg-neutral-950 border border-neutral-700/80 rounded px-2 py-1 text-neutral-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
                       >
                         <option value="both">Both Models</option>
                         <option value="trough_owned">Trough Owned Only</option>
@@ -479,7 +479,7 @@ export const ExpenseManager: React.FC<Props> = ({
                             e.target.value as 'venue' | 'promoter'
                           )
                         }
-                        className="bg-slate-950 border border-slate-700/80 rounded px-2 py-1 text-slate-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
+                        className="bg-neutral-950 border border-neutral-700/80 rounded px-2 py-1 text-neutral-200 text-xs font-mono focus:outline-none focus:border-[#FFCC00]"
                       >
                         <option value="venue">Venue Absorbs</option>
                         <option value="promoter">External Promoter Pays</option>
@@ -500,13 +500,13 @@ export const ExpenseManager: React.FC<Props> = ({
                             parseFloat(e.target.value)
                           )
                         }
-                        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
+                        className="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-[#FFCC00]"
                       />
                     </td>
 
                     <td className="py-2.5 px-3 text-right">
                       <div className="relative inline-block">
-                        <span className="absolute left-2 top-1 text-slate-400 font-mono">
+                        <span className="absolute left-2 top-1 text-neutral-400 font-mono">
                           $
                         </span>
                         <input
@@ -521,7 +521,7 @@ export const ExpenseManager: React.FC<Props> = ({
                               Math.max(0, parseFloat(e.target.value) || 0)
                             )
                           }
-                          className="w-24 bg-slate-950 border border-slate-700/80 rounded pl-5 pr-2 py-1 text-right text-[#FFCC00] font-bold text-xs font-mono tabular-nums focus:outline-none focus:border-[#FFCC00]"
+                          className="w-24 bg-neutral-950 border border-neutral-700/80 rounded pl-5 pr-2 py-1 text-right text-[#FFCC00] font-bold text-xs font-mono tabular-nums focus:outline-none focus:border-[#FFCC00]"
                         />
                       </div>
                     </td>
@@ -529,7 +529,7 @@ export const ExpenseManager: React.FC<Props> = ({
                     <td className="py-2.5 px-2 text-center">
                       <button
                         onClick={() => handleDeleteOverhead(item.id)}
-                        className="p-1 text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                        className="p-1 text-neutral-500 hover:text-red-400 transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

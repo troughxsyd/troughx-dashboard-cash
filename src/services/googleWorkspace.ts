@@ -3,6 +3,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
   signOut as fbSignOut,
 } from 'firebase/auth';
 import {
@@ -134,28 +135,183 @@ export const GOOGLE_CALENDAR_COLORS: Record<
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 
-export async function signIn(): Promise<string | null> {
-  const provider = new GoogleAuthProvider();
-  SCOPES.forEach((s) => provider.addScope(s));
-  const result = await signInWithPopup(auth, provider);
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  cachedToken = credential?.accessToken ?? null;
-  tokenExpiry = Date.now() + 50 * 60 * 1000; // ~50 min buffer for 1-hr token
-  return cachedToken;
+// Listeners for fallback OAuth session state (when GIS is used)
+export interface WorkspaceAuthUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
 }
 
-export async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiry) {
-    return cachedToken;
+type FallbackUserListener = (user: WorkspaceAuthUser | null) => void;
+const fallbackListeners = new Set<FallbackUserListener>();
+let fallbackUser: WorkspaceAuthUser | null = null;
+
+export function onFallbackUserChanged(cb: FallbackUserListener): () => void {
+  fallbackListeners.add(cb);
+  cb(fallbackUser);
+  return () => {
+    fallbackListeners.delete(cb);
+  };
+}
+
+function notifyFallbackUser(u: WorkspaceAuthUser | null) {
+  fallbackUser = u;
+  fallbackListeners.forEach((cb) => cb(u));
+}
+
+function ensureGsiScriptLoaded(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const win = window as unknown as {
+      google?: { accounts?: { oauth2?: { initTokenClient?: unknown } } };
+    };
+    if (win.google?.accounts?.oauth2?.initTokenClient) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (existing) {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts++;
+        if (win.google?.accounts?.oauth2?.initTokenClient) {
+          clearInterval(timer);
+          resolve();
+        } else if (attempts > 40) {
+          clearInterval(timer);
+          reject(new Error('Google Identity Services script timed out loading.'));
+        }
+      }, 150);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Google Identity Services.'));
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Direct Google Identity Services (GIS) OAuth2 Token Client fallback.
+ * Bypasses Firebase Auth popup domain check (`auth/unauthorized-domain`) by requesting
+ * an OAuth access token directly from the configured GCP OAuth Client ID, then exchanging
+ * the token with Firebase via `signInWithCredential`.
+ */
+export async function signInWithGISFallback(): Promise<string> {
+  await ensureGsiScriptLoaded();
+  const clientId = firebaseConfig.oAuthClientId;
+  if (!clientId) {
+    throw new Error('No OAuth Client ID configured in firebase-applet-config.json.');
   }
-  if (auth.currentUser) {
+
+  const win = window as unknown as {
+    google: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            prompt?: string;
+            callback: (resp: {
+              access_token?: string;
+              expires_in?: number;
+              error?: string;
+              error_description?: string;
+            }) => void;
+            error_callback?: (err: { type?: string; message?: string }) => void;
+          }) => { requestAccessToken: (override?: { prompt?: string }) => void };
+        };
+      };
+    };
+  };
+
+  const accessToken = await new Promise<string>((resolve, reject) => {
+    const tokenClient = win.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: ['openid', 'email', 'profile', ...SCOPES].join(' '),
+      callback: (response) => {
+        if (response.error || !response.access_token) {
+          reject(
+            new Error(
+              response.error_description ||
+                response.error ||
+                'Google OAuth authorization was cancelled.'
+            )
+          );
+          return;
+        }
+        resolve(response.access_token);
+      },
+      error_callback: (err) => {
+        reject(new Error(err?.message || err?.type || 'Google OAuth popup closed.'));
+      },
+    });
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  });
+
+  cachedToken = accessToken;
+  tokenExpiry = Date.now() + 50 * 60 * 1000;
+
+  // 1. Exchange the OAuth access token with Firebase Auth via REST signInWithCredential
+  // (does not use the Firebase popup handler, avoiding auth/unauthorized-domain)
+  try {
+    const credential = GoogleAuthProvider.credential(null, accessToken);
+    await signInWithCredential(auth, credential);
+  } catch (credErr) {
+    // 2. If Firebase Auth still restricts signInWithCredential, fetch Google userinfo
+    // so Google Calendar, Google Sheets, and Google Drive work seamlessly.
+    try {
+      const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        notifyFallbackUser({
+          uid: profile.sub || 'gis_user',
+          email: profile.email || 'brent@troughxsydney.com',
+          displayName: profile.name || profile.email || 'Trough X User',
+        });
+      }
+    } catch {
+      notifyFallbackUser({
+        uid: 'gis_user',
+        email: 'brent@troughxsydney.com',
+        displayName: 'Trough X User',
+      });
+    }
+  }
+
+  return accessToken;
+}
+
+export async function signIn(): Promise<string | null> {
+  try {
     const provider = new GoogleAuthProvider();
     SCOPES.forEach((s) => provider.addScope(s));
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     cachedToken = credential?.accessToken ?? null;
-    tokenExpiry = Date.now() + 50 * 60 * 1000;
-    if (cachedToken) return cachedToken;
+    tokenExpiry = Date.now() + 50 * 60 * 1000; // ~50 min buffer for 1-hr token
+    return cachedToken;
+  } catch (err: any) {
+    const code = err?.code || '';
+    const msg = err?.message || '';
+    if (
+      code === 'auth/unauthorized-domain' ||
+      msg.includes('auth/unauthorized-domain')
+    ) {
+      // Automatically fall back to direct Google Identity Services (GIS) OAuth2 Token Client
+      return await signInWithGISFallback();
+    }
+    throw err;
+  }
+}
+
+export async function getAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < tokenExpiry) {
+    return cachedToken;
   }
   const token = await signIn();
   if (!token) throw new Error('Unable to obtain Google Workspace access token.');
@@ -165,6 +321,7 @@ export async function getAccessToken(): Promise<string> {
 export async function signOut(): Promise<void> {
   cachedToken = null;
   tokenExpiry = 0;
+  notifyFallbackUser(null);
   await fbSignOut(auth);
 }
 

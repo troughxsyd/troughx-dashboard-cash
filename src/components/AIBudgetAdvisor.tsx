@@ -73,8 +73,8 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
   };
 
   return (
-    <div className="bg-slate-900/80 border border-slate-700/80 rounded-lg p-5 space-y-5">
-      <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-lg p-5 space-y-5">
+      <div className="border-b border-neutral-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#FFCC00]" />
@@ -82,7 +82,7 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
               Trough X Sydney (273 Crown St) — Mathematical & Cashflow Intelligence Engine
             </h2>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-neutral-400 mt-0.5">
             Audits BOOT-compliant IFA wage ratios (&lt;30% Owned / &lt;50% Hosted), 11.5% Superannuation, ≤22.0% Beverage COGS, and 144/121 breakeven thresholds.
           </p>
         </div>
@@ -90,7 +90,7 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
         <button
           onClick={() => runAnalysis(PRESET_PROMPTS[0])}
           disabled={loading}
-          className="px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+          className="px-3.5 py-1.5 text-xs font-bold text-neutral-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           <span>Run Mathematical Audit</span>
@@ -99,7 +99,7 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
 
       {/* Strategic Audit Prompts */}
       <div className="space-y-1.5">
-        <label className="text-xs font-mono text-slate-300 uppercase tracking-wider">
+        <label className="text-xs font-mono text-neutral-300 uppercase tracking-wider">
           273 Crown St Compliance & Cashflow Audits
         </label>
         <div className="flex flex-wrap gap-2">
@@ -108,7 +108,7 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
               key={prompt}
               onClick={() => runAnalysis(prompt)}
               disabled={loading}
-              className="px-3 py-1.5 text-xs font-medium bg-slate-950 border border-slate-700/80 hover:border-[#FFCC00] text-slate-200 hover:text-white rounded-md transition-colors text-left disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 text-xs font-medium bg-neutral-950 border border-neutral-700/80 hover:border-[#FFCC00] text-neutral-200 hover:text-white rounded-md transition-colors text-left disabled:opacity-50 cursor-pointer"
             >
               {prompt}
             </button>
@@ -128,12 +128,12 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
             }
           }}
           placeholder="Ask the 273 Crown St Cashflow Engine (e.g. 'What happens to our wage ratio if bar spend drops to $20/head at 180 pax?')"
-          className="flex-1 bg-slate-950 border border-slate-700/80 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FFCC00] font-mono"
+          className="flex-1 bg-neutral-950 border border-neutral-700/80 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FFCC00] font-mono"
         />
         <button
           onClick={() => customPrompt.trim() && runAnalysis(customPrompt)}
           disabled={loading || !customPrompt.trim()}
-          className="px-4 py-2 bg-[#FFCC00] hover:bg-[#ffe066] text-slate-950 rounded text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer transition-colors"
+          className="px-4 py-2 bg-[#FFCC00] hover:bg-[#ffe066] text-neutral-950 rounded text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer transition-colors"
         >
           <Send className="w-3.5 h-3.5" />
           <span>Audit</span>
@@ -141,38 +141,38 @@ export const AIBudgetAdvisor: React.FC<Props> = ({
       </div>
 
       {loading && (
-        <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-6 space-y-3 animate-pulse">
-          <div className="h-4 bg-slate-800 rounded w-1/3" />
-          <div className="h-3 bg-slate-800/60 rounded w-full" />
-          <div className="h-3 bg-slate-800/60 rounded w-5/6" />
-          <div className="h-3 bg-slate-800/60 rounded w-4/6" />
+        <div className="bg-neutral-950/80 border border-neutral-800 rounded-lg p-6 space-y-3 animate-pulse">
+          <div className="h-4 bg-neutral-800 rounded w-1/3" />
+          <div className="h-3 bg-neutral-800/60 rounded w-full" />
+          <div className="h-3 bg-neutral-800/60 rounded w-5/6" />
+          <div className="h-3 bg-neutral-800/60 rounded w-4/6" />
         </div>
       )}
 
       {!loading && analysis && (
-        <div className="bg-slate-950 border border-slate-700/80 rounded-lg p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div className="bg-neutral-950 border border-neutral-700/80 rounded-lg p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
             <span className="text-xs uppercase font-mono tracking-wider text-[#FFCC00] font-bold flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" /> 273 Crown St Financial & Compliance Audit
             </span>
-            <span className="text-[11px] text-slate-400 font-mono">
+            <span className="text-[11px] text-neutral-400 font-mono">
               Trough X Sydney Intelligence Engine
             </span>
           </div>
 
-          <div className="prose prose-invert max-w-none text-xs text-slate-200 leading-relaxed space-y-3 font-sans whitespace-pre-line">
+          <div className="prose prose-invert max-w-none text-xs text-neutral-200 leading-relaxed space-y-3 font-sans whitespace-pre-line">
             {analysis}
           </div>
         </div>
       )}
 
       {!loading && !analysis && (
-        <div className="bg-slate-950/60 border border-dashed border-slate-700/80 rounded-lg p-8 text-center space-y-2">
+        <div className="bg-neutral-950/60 border border-dashed border-neutral-700/80 rounded-lg p-8 text-center space-y-2">
           <Lightbulb className="w-6 h-6 text-[#FFCC00] mx-auto" />
           <div className="text-xs font-medium text-white">
             Ready to audit 273 Crown St event parameters
           </div>
-          <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+          <p className="text-[11px] text-neutral-400 max-w-md mx-auto">
             Click &quot;Run Mathematical Audit&quot; above to verify contribution margin percentages, BOOT-compliant IFA wage ratios, and 144/121 breakeven thresholds.
           </p>
         </div>

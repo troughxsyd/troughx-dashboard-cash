@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
 }) => {
   return (
-    <header className="border-b border-slate-700/80 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40">
+    <header className="border-b border-neutral-700/80 bg-neutral-900/95 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-8 h-16">
           {/* Zone 1: Single text element wordmark */}
@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 cursor-pointer ${
                   activeTab === item.id
                     ? 'border-[#FFCC00] text-white font-semibold'
-                    : 'border-transparent text-slate-400 hover:text-white'
+                    : 'border-transparent text-neutral-400 hover:text-white'
                 }`}
               >
                 {item.label}
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="Select Commercial Operating Model Preset"
               value={activePresetId}
               onChange={(e) => onSelectPreset(e.target.value)}
-              className="hidden lg:block bg-slate-800 border border-slate-600/80 text-white text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#FFCC00] cursor-pointer max-w-[240px] truncate"
+              className="hidden lg:block bg-neutral-800 border border-neutral-600/80 text-white text-xs rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#FFCC00] cursor-pointer max-w-[240px] truncate"
             >
               {presets.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onResetToDefault}
               title="Reset to preset baseline"
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors cursor-pointer"
               aria-label="Reset model"
             >
               <RotateCcw className="w-4 h-4" />
@@ -93,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={onOpenExport}
-              className="px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-1.5 text-xs font-bold text-neutral-950 bg-[#FFCC00] hover:bg-[#ffe066] rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export P&L</span>
@@ -103,15 +103,15 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Navigation Strip */}
-      <div className="md:hidden flex overflow-x-auto gap-2 px-4 py-2 border-t border-slate-800 bg-slate-900 text-xs">
+      <div className="md:hidden flex overflow-x-auto gap-2 px-4 py-2 border-t border-neutral-800 bg-neutral-900 text-xs">
         {MENU_ITEMS.map((item) => (
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
             className={`whitespace-nowrap px-2.5 py-1 rounded cursor-pointer ${
               activeTab === item.id
-                ? 'bg-[#FFCC00] text-slate-950 font-bold'
-                : 'text-slate-300'
+                ? 'bg-[#FFCC00] text-neutral-950 font-bold'
+                : 'text-neutral-300'
             }`}
           >
             {item.label}
