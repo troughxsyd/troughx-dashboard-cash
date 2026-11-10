@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trough X Sydney | Operating Budget & Wage Calculator</title>
+
+  <!-- Google Font: Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            poppins: ['Poppins', 'sans-serif'],
+          },
+          colors: {
+            trough: {
+              yellow: '#FFCC00',
+              yellowHover: '#E5B800',
+              yellowDark: '#B38F00',
+              yellowLight: '#FFF8DB',
+              bgDark: '#13141C',
+              cardDark: '#1E202C',
+              cardBorder: '#2E3247',
+              steelGrey: '#2B2D42',
+              steelSlate: '#4A5568',
+              muted: '#94A3B8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome 6 CDN for iconic venue badges -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #13141C;
+      color: #F8FAFC;
+    }
+
+    /* Custom range sliders styling */
+    input[type=range] {
+      accent-color: #FFCC00;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1E202C;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4A5568;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #FFCC00;
+    }
+
+    /* Print styles */
+    @media print {
+      body {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      .bg-trough-cardDark {
+        background-color: #F8FAFC !important;
+        border-color: #E2E8F0 !important;
+        color: #0F172A !important;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-trough-bgDark text-slate-100 antialiased selection:bg-trough-yellow selection:text-black">
+
+  <!-- TOP HEADER / NAV -->
+  <header class="no-print border-b border-trough-cardBorder bg-[#181924]/90 sticky top-0 z-40 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Brand & Location -->
+      <div class="flex items-center space-x-3.5">
+        <div class="w-10 h-10 rounded-xl bg-trough-yellow flex items-center justify-center font-extrabold text-black text-xl shadow-[0_0_15px_rgba(255,204,0,0.35)]">
+          TX
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg tracking-tight text-white">TROUGH X <span class="text-trough-yellow text-xs px-2 py-0.5 rounded-full bg-trough-yellow/10 border border-trough-yellow/30 font-medium">SYDNEY</span></h1>
+            <span class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono hidden sm:inline-block">LIVE MODEL v3.2</span>
+          </div>
+          <p class="text-xs text-trough-muted flex items-center gap-1.5">
+            <i class="fa-solid fa-location-dot text-trough-yellow"></i> 273 Crown St, Surry Hills &bull; Cap: 300 Max (Basement 60)
+          </p>
+        </div>
+      </div>
+
+      <!-- Action Buttons & Mode Pill -->
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <button id="btnQuickMode" onclick="toggleSimModeQuick()" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-trough-steelGrey hover:bg-trough-steelSlate transition border border-slate-600 flex items-center gap-1.5">
+          <i class="fa-solid fa-arrows-rotate text-trough-yellow"></i>
+          <span id="quickModeText">Switch to Promoter Model ($5 Clip)</span>
+        </button>
+
+        <button onclick="window.print()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-print"></i>
+          <span>Print / PDF</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- TAB NAVIGATION BAR -->
+    <div class="border-t border-trough-cardBorder bg-[#14151F]">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-3 overflow-x-auto py-1.5 text-xs font-medium scrollbar-none">
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active px-3.5 py-2 rounded-lg flex items-center gap-2 transition text-black bg-trough-yellow font-semibold shadow-sm">
+          <i class="fa-solid fa-chart-pie"></i> Executive Dashboard
+        </button>
+        <button onclick="switchTab('simulator')" id="tab-simulator" class="tab-btn px-3.5 py-2 rounded-lg flex items-center gap-2 transition text-slate-300 hover:text-white hover:bg-slate-800">
+          <i class="fa-solid fa-sliders"></i> Budget Simulator
+        </button>
+        <button onclick="switchTab('wages')" id="tab-wages" class="tab-btn px-3.5 py-2 rounded-lg flex items-center gap-2 transition text-slate-300 hover:text-white hover:bg-slate-800">
+          <i class="fa-solid fa-users-gear"></i> Wage Calculator (IFA)
+        </button>
+        <button onclick="switchTab('promoter')" id="tab-promoter" class="tab-btn px-3.5 py-2 rounded-lg flex items-center gap-2 transition text-slate-300 hover:text-white hover:bg-slate-800">
+          <i class="fa-solid fa-handshake-simple"></i> Promoter Deal Analyzer
+        </button>
+        <button onclick="switchTab('calendar')" id="tab-calendar" class="tab-btn px-3.5 py-2 rounded-lg flex items-center gap-2 transition text-slate-300 hover:text-white hover:bg-slate-800">
+          <i class="fa-solid fa-calendar-days"></i> Forthcoming Events
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN VIEWPORT -->
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- ================= TAB 1: EXECUTIVE DASHBOARD ================= -->
+    <section id="view-dashboard" class="tab-content space-y-6">
+      
+      <!-- Operational Notice Bar -->
+      <div class="bg-gradient-to-r from-trough-cardDark to-[#242738] border-l-4 border-trough-yellow p-4 rounded-xl shadow flex flex-col md:flex-row md:items-center justify-between gap-3 border border-trough-cardBorder">
+        <div class="flex items-center space-x-3">
+          <div class="p-2.5 bg-trough-yellow/10 rounded-lg text-trough-yellow text-lg">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <div>
+            <h4 class="font-semibold text-sm text-white">273 Crown Street Surry Hills Compliance Framework</h4>
+            <p class="text-xs text-trough-muted">Maximum capacity capped at 300 patrons total (Basement strict limit: 60 patrons). Wages governed by flat-rate IFA BOOT standards.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 self-start md:self-auto">
+          <span class="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono">1:100 Security Ratio</span>
+          <span class="text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-trough-yellow font-mono">Medic Mandatory</span>
+        </div>
+      </div>
+
+      <!-- KPI Executive Cards Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        
+        <!-- Target Gross -->
+        <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4.5 hover:border-slate-600 transition shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-trough-muted uppercase tracking-wider">Target Gross (200 Pax)</span>
+            <span class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs"><i class="fa-solid fa-arrow-trend-up"></i></span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl sm:text-3xl font-bold tracking-tight text-white">$11,000</span>
+            <span class="text-[11px] text-emerald-400 font-medium">Owned Night</span>
+          </div>
+          <p class="mt-1 text-[11px] text-trough-muted">$6k Tickets + $4.5k Bar + $500 Cloak</p>
+        </div>
+
+        <!-- Target Net Surplus -->
+        <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4.5 hover:border-trough-yellow/50 transition shadow-sm relative overflow-hidden">
+          <div class="absolute -right-4 -bottom-4 w-16 h-16 bg-trough-yellow/5 rounded-full blur-xl pointer-events-none"></div>
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-trough-yellow uppercase tracking-wider">Target Net Surplus</span>
+            <span class="p-1.5 rounded-lg bg-trough-yellow/10 text-trough-yellow text-xs"><i class="fa-solid fa-sack-dollar"></i></span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl sm:text-3xl font-bold tracking-tight text-trough-yellow">$4,475</span>
+            <span class="text-[11px] text-trough-yellow font-medium">40.7% Margin</span>
+          </div>
+          <p class="mt-1 text-[11px] text-trough-muted">Gross Margin less Wages & Overheads</p>
+        </div>
+
+        <!-- Wage Bill Ratio -->
+        <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4.5 hover:border-slate-600 transition shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-trough-muted uppercase tracking-wider">Labour Cost Ratio</span>
+            <span class="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 text-xs"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl sm:text-3xl font-bold tracking-tight text-white">29.4%</span>
+            <span class="text-[11px] text-emerald-400 font-medium">&le; 30% Benchmark</span>
+          </div>
+          <p class="mt-1 text-[11px] text-trough-muted">$3,235.00 Total Direct Shift Wages</p>
+        </div>
+
+        <!-- Promoter Breakeven -->
+        <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-4.5 hover:border-slate-600 transition shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-medium text-trough-muted uppercase tracking-wider">Promoter Breakeven</span>
+            <span class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 text-xs"><i class="fa-solid fa-scale-balanced"></i></span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-2xl sm:text-3xl font-bold tracking-tight text-white">144 Pax</span>
+            <span class="text-[11px] text-amber-300 font-mono">121 w/ Deposit</span>
+          </div>
+          <p class="mt-1 text-[11px] text-trough-muted">Based on $5 Clip + $22.50 bar spend</p>
+        </div>
+
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Comparative Performance Chart (2 cols) -->
+        <div class="lg:col-span-2 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div>
+              <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-column text-trough-yellow"></i> Operating Scenario Comparison
+              </h3>
+              <p class="text-xs text-trough-muted">Actual Historical (Sept 11) vs Owned Target vs Owned Peak vs Promoter Model</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="inline-flex items-center gap-1 text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Gross</span>
+              <span class="inline-flex items-center gap-1 text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Wages</span>
+              <span class="inline-flex items-center gap-1 text-slate-300"><span class="w-2.5 h-2.5 rounded-full bg-trough-yellow"></span> Surplus</span>
+            </div>
+          </div>
+          <div class="relative h-64 sm:h-72 w-full">
+            <canvas id="scenarioComparisonChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Cost Allocation Doughnut Chart (1 col) -->
+        <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-chart-pie text-trough-yellow"></i> Target Cost & Margin Split
+            </h3>
+            <p class="text-xs text-trough-muted">Allocation of $11,000 Target Turnover</p>
+          </div>
+          <div class="relative h-56 w-full my-auto flex items-center justify-center">
+            <canvas id="costDoughnutChart"></canvas>
+          </div>
+          <div class="pt-3 border-t border-slate-800 text-[11px] grid grid-cols-2 gap-2 text-trough-muted">
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded bg-amber-400"></span> Net Surplus: 40.7%</div>
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded bg-rose-500"></span> Direct Wages: 29.4%</div>
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded bg-blue-500"></span> Production: 19.5%</div>
+            <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded bg-emerald-500"></span> Bar COGS: 10.4%</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Historical Actuals vs Benchmark Table -->
+      <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 overflow-hidden shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-scale-unbalanced-flip text-trough-yellow"></i> Operating Models Performance Matrix
+            </h3>
+            <p class="text-xs text-trough-muted">Cross-reconciliation across attendance levels and licensing limits</p>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+              <tr>
+                <th class="py-3 px-3.5">Model Scenario</th>
+                <th class="py-3 px-3.5">Patron Count</th>
+                <th class="py-3 px-3.5">Gross Revenue</th>
+                <th class="py-3 px-3.5">Beverage COGS</th>
+                <th class="py-3 px-3.5">Total Direct Wages</th>
+                <th class="py-3 px-3.5">Labour %</th>
+                <th class="py-3 px-3.5 text-right font-bold text-trough-yellow">Net Operating Surplus</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-slate-200">
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 px-3.5 font-medium flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-slate-400"></span> Actuals (11 Sept Historical)
+                </td>
+                <td class="py-3 px-3.5 font-mono">150 Pax</td>
+                <td class="py-3 px-3.5 font-mono">$4,881.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($857.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($1,290.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">26.4%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">+$2,644.00</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 px-3.5 font-medium flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-blue-400"></span> Conservative Owned Party
+                </td>
+                <td class="py-3 px-3.5 font-mono">120 Pax</td>
+                <td class="py-3 px-3.5 font-mono">$6,060.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($528.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($2,560.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">42.2%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">+$1,472.00</td>
+              </tr>
+              <tr class="bg-trough-yellow/5 border-l-2 border-trough-yellow hover:bg-trough-yellow/10">
+                <td class="py-3 px-3.5 font-semibold text-white flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-trough-yellow"></span> Target Owned Party (Baseline)
+                </td>
+                <td class="py-3 px-3.5 font-mono font-bold text-white">200 Pax</td>
+                <td class="py-3 px-3.5 font-mono font-bold text-white">$11,000.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($990.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($3,235.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">29.4%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow text-sm">+$4,475.00</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 px-3.5 font-medium flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-purple-400"></span> Peak Sell-Out Owned Party
+                </td>
+                <td class="py-3 px-3.5 font-mono">280 Pax</td>
+                <td class="py-3 px-3.5 font-mono">$18,440.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($1,725.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($3,980.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">21.6%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">+$9,535.00</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 px-3.5 font-medium flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Promoter Hosted Target ($5 Clip)
+                </td>
+                <td class="py-3 px-3.5 font-mono">200 Pax</td>
+                <td class="py-3 px-3.5 font-mono">$6,000.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($990.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($3,235.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300">53.9%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-trough-yellow">+$1,385.00</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 px-3.5 font-medium flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-red-400"></span> Promoter Hosted Under-Breakeven
+                </td>
+                <td class="py-3 px-3.5 font-mono">120 Pax</td>
+                <td class="py-3 px-3.5 font-mono">$3,300.00</td>
+                <td class="py-3 px-3.5 font-mono text-slate-400">($528.00)</td>
+                <td class="py-3 px-3.5 font-mono text-rose-300">($3,110.00)</td>
+                <td class="py-3 px-3.5 font-mono"><span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">94.2%</span></td>
+                <td class="py-3 px-3.5 font-mono text-right font-bold text-rose-400">-$637.50</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 2: INTERACTIVE BUDGET SIMULATOR ================= -->
+    <section id="view-simulator" class="tab-content hidden space-y-6">
+      
+      <!-- Simulator Control Panel & Live Output -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Controls Column (5 cols) -->
+        <div class="lg:col-span-5 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 space-y-4 shadow-sm">
+          
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-trough-yellow"></i> Simulation Parameters
+            </h3>
+            <button onclick="resetSimulatorDefaults()" class="text-xs text-trough-yellow hover:underline flex items-center gap-1">
+              <i class="fa-solid fa-rotate-left"></i> Reset Defaults
+            </button>
+          </div>
+
+          <!-- Operating Mode Radio Switch -->
+          <div>
+            <label class="block text-xs font-semibold text-trough-muted uppercase tracking-wider mb-2">Event Production Mode</label>
+            <div class="grid grid-cols-2 gap-2 bg-[#12131C] p-1.5 rounded-xl border border-slate-800">
+              <button id="simModeOwned" onclick="setSimMode('owned')" class="py-2 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 bg-trough-yellow text-black">
+                <i class="fa-solid fa-crown"></i> Trough-Owned Party
+              </button>
+              <button id="simModePromoter" onclick="setSimMode('promoter')" class="py-2 px-3 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 text-slate-300 hover:text-white">
+                <i class="fa-solid fa-handshake"></i> Promoter ($5 Clip)
+              </button>
+            </div>
+          </div>
+
+          <!-- Attendance Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-medium text-slate-300">Expected Attendance</span>
+              <span id="displayPax" class="font-mono font-bold text-trough-yellow bg-slate-800 px-2 py-0.5 rounded border border-slate-700">200 Pax</span>
+            </div>
+            <input type="range" id="simPax" min="50" max="300" step="5" value="200" oninput="runSimulation()" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>50 Min</span>
+              <span class="text-amber-400">144 (Breakeven)</span>
+              <span>200 Base</span>
+              <span class="text-rose-400 font-bold">300 (Max Cap)</span>
+            </div>
+          </div>
+
+          <!-- Ticket Yield Input -->
+          <div id="ticketPriceContainer" class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-medium text-slate-300">Average Ticket Price</span>
+              <span id="displayTicketPrice" class="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">$30.00 AUD</span>
+            </div>
+            <input type="range" id="simTicketPrice" min="15" max="60" step="1" value="30" oninput="runSimulation()" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer">
+            <p id="ticketPriceNote" class="text-[10px] text-slate-400">Net price retained per paid attendee after platform fees.</p>
+          </div>
+
+          <!-- Promoter Clip Banner (Visible in Promoter Mode) -->
+          <div id="promoterClipNotice" class="hidden p-3 rounded-xl bg-trough-yellow/10 border border-trough-yellow/30 text-xs space-y-1.5">
+            <div class="flex justify-between items-center font-bold text-trough-yellow">
+              <span><i class="fa-solid fa-ticket"></i> Fixed Venue Clip</span>
+              <span>$5.00 / Ticket Sold</span>
+            </div>
+            <p class="text-[11px] text-slate-300 leading-tight">Venue collects and retains $5.00 per paid ticket. Promoter retains balance (e.g. $25–$35). Venue retains 100% of Bar & Cloak.</p>
+            <div class="pt-1 flex items-center justify-between">
+              <label class="text-[11px] text-slate-200 cursor-pointer flex items-center gap-1.5">
+                <input type="checkbox" id="simPromoterDeposit" onchange="runSimulation()" checked class="rounded border-slate-700 text-trough-yellow focus:ring-0">
+                Include $550 Non-Refundable Booking Deposit
+              </label>
+            </div>
+          </div>
+
+          <!-- Average Bar Spend -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-medium text-slate-300">Average Bar Spend Per Head</span>
+              <span id="displayBarSpend" class="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">$22.50 AUD</span>
+            </div>
+            <input type="range" id="simBarSpend" min="12" max="45" step="0.5" value="22.50" oninput="runSimulation()" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>$12 Low</span>
+              <span>$22.50 Baseline</span>
+              <span>$35+ High Trade</span>
+            </div>
+          </div>
+
+          <!-- Cloakroom Check-in % -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-medium text-slate-300">Cloakroom Check-in Rate</span>
+              <span id="displayCloakRate" class="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">50% ($5.00 / item)</span>
+            </div>
+            <input type="range" id="simCloakRate" min="15" max="85" step="5" value="50" oninput="runSimulation()" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer">
+          </div>
+
+          <!-- Beverage COGS Target -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <span class="font-medium text-slate-300">Beverage Stock COGS %</span>
+              <span id="displayCogsRate" class="font-mono font-bold text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">22.0%</span>
+            </div>
+            <input type="range" id="simCogsRate" min="16" max="30" step="0.5" value="22.0" oninput="runSimulation()" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer">
+            <p class="text-[10px] text-slate-400">Strict Trough X KPI cap is 22.0% maximum.</p>
+          </div>
+
+        </div>
+
+        <!-- Live Financial Output Statement (7 cols) -->
+        <div class="lg:col-span-7 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+          
+          <div>
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div>
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                  <i class="fa-solid fa-file-invoice-dollar text-trough-yellow"></i> Live Pro-Forma Statement
+                </h3>
+                <span id="simStatementSubtitle" class="text-xs text-trough-muted">Trough-Owned Event Baseline Model</span>
+              </div>
+              <span id="simStatusPill" class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30 flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check"></i> HIGHLY VIABLE
+              </span>
+            </div>
+
+            <!-- Financial Table -->
+            <div class="space-y-2.5 text-xs font-mono">
+              
+              <!-- REVENUE BLOCK -->
+              <div class="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
+                <div class="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
+                  <span>1. GROSS VENUE REVENUE</span>
+                  <span>AUSTRALIAN DOLLARS</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span id="lineItemTicketLabel">Ticket Revenue:</span>
+                  <span id="simValTicketRev" class="font-bold text-white">$6,000.00</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Bar / POS Turnover:</span>
+                  <span id="simValBarRev" class="font-bold text-white">$4,500.00</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Cloakroom Takings:</span>
+                  <span id="simValCloakRev" class="font-bold text-white">$500.00</span>
+                </div>
+                <div id="rowDeposit" class="hidden flex justify-between text-amber-300">
+                  <span>Promoter Booking Deposit:</span>
+                  <span id="simValDeposit" class="font-bold">$550.00</span>
+                </div>
+                <div class="pt-1.5 border-t border-slate-800 flex justify-between font-bold text-sm text-white font-sans">
+                  <span>Total Gross Turnover:</span>
+                  <span id="simValGrossTurnover" class="font-mono text-trough-yellow">$11,000.00</span>
+                </div>
+              </div>
+
+              <!-- COGS BLOCK -->
+              <div class="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
+                <div class="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
+                  <span>2. COST OF GOODS SOLD (COGS)</span>
+                  <span>TARGET: &le; 22%</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Beverage Stock Burn (<span id="simLabelCogsPct">22%</span>):</span>
+                  <span id="simValCogs" class="text-rose-400">($990.00)</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Bar Consumables & Glassware:</span>
+                  <span id="simValConsumables" class="text-rose-400">($150.00)</span>
+                </div>
+                <div class="pt-1.5 border-t border-slate-800 flex justify-between font-bold text-white font-sans">
+                  <span>Gross Operating Margin:</span>
+                  <span id="simValGrossMargin" class="font-mono text-emerald-400">$9,860.00</span>
+                </div>
+              </div>
+
+              <!-- LABOUR & OVERHEADS -->
+              <div class="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5">
+                <div class="flex justify-between text-slate-400 font-sans text-[11px] font-semibold tracking-wider">
+                  <span>3. WAGES & DIRECT OVERHEADS</span>
+                  <span>IFA FLAT RATES</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span class="flex items-center gap-1.5">
+                    Direct Venue Wages: 
+                    <span id="simStaffCountBadge" class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-sans">11 Staff</span>
+                  </span>
+                  <span id="simValWages" class="text-rose-400">($3,235.00)</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>DJ & Entertainment Talent:</span>
+                  <span id="simValTalent" class="text-rose-400">($900.00)</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Sound/Lighting Tech & Decor:</span>
+                  <span id="simValProduction" class="text-rose-400">($600.00)</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Marketing, Street Posters & EFTPOS (1.5%):</span>
+                  <span id="simValMarketing" class="text-rose-400">($650.00)</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Bottom-Line Result Box -->
+          <div class="mt-4 pt-4 border-t border-slate-800">
+            <div class="bg-gradient-to-br from-[#242738] to-[#1E202C] p-4 rounded-xl border-2 border-trough-yellow flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider block">Net Contribution Operating Surplus</span>
+                <span id="simValNetSurplus" class="text-3xl font-extrabold text-trough-yellow font-mono tracking-tight">+$4,475.00</span>
+              </div>
+              <div class="flex items-center gap-4 text-xs font-mono">
+                <div>
+                  <span class="block text-slate-400 text-[10px]">WAGES % OF REV</span>
+                  <span id="simValWageRatio" class="font-bold text-slate-200">29.4%</span>
+                </div>
+                <div class="border-l border-slate-700 pl-4">
+                  <span class="block text-slate-400 text-[10px]">CONTRIB MARGIN</span>
+                  <span id="simValMarginRatio" class="font-bold text-emerald-400">40.7%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 3: WAGES CALCULATOR & ROSTER ================= -->
+    <section id="view-wages" class="tab-content hidden space-y-6">
+      
+      <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-users-gear text-trough-yellow"></i> Staffing Roster & Individual Flexibility Agreement (IFA) Matrix
+            </h3>
+            <p class="text-xs text-trough-muted">Flat-rate loaded rates tested against the Fair Work Hospitality Industry (General) Award BOOT standard.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="text-xs text-slate-300 flex items-center gap-2 cursor-pointer bg-[#151621] px-3 py-1.5 rounded-lg border border-slate-800">
+              <input type="checkbox" id="wagesIncludeSuper" onchange="calculateRosterTotal()" checked class="rounded border-slate-700 text-trough-yellow focus:ring-0">
+              <span>Apply Statutory Super (11.5%) to Direct Staff</span>
+            </label>
+            <button onclick="resetRosterDefaults()" class="text-xs text-trough-yellow hover:underline flex items-center gap-1">
+              <i class="fa-solid fa-arrow-rotate-right"></i> Reset Roster
+            </button>
+          </div>
+        </div>
+
+        <!-- Roster Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+              <tr>
+                <th class="py-3 px-3">Role & Scope</th>
+                <th class="py-3 px-3 text-center">Headcount</th>
+                <th class="py-3 px-3 text-center">Hours / Shift</th>
+                <th class="py-3 px-3 text-center">Hourly Rate (AUD)</th>
+                <th class="py-3 px-3 text-center">Superannuation</th>
+                <th class="py-3 px-3 text-right">Total Shift Cost</th>
+              </tr>
+            </thead>
+            <tbody id="rosterTableBody" class="divide-y divide-slate-800 text-slate-200">
+              <!-- Dynamically populated via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Roster Summary KPI Bar -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800">
+          <div class="bg-[#151621] p-3 rounded-xl border border-slate-800">
+            <span class="text-[11px] text-trough-muted block">Total Headcount</span>
+            <span id="rosterTotalHeadcount" class="text-xl font-bold font-mono text-white">11 Persons</span>
+          </div>
+          <div class="bg-[#151621] p-3 rounded-xl border border-slate-800">
+            <span class="text-[11px] text-trough-muted block">Total Rostered Hours</span>
+            <span id="rosterTotalHours" class="text-xl font-bold font-mono text-white">67.0 Hours</span>
+          </div>
+          <div class="bg-[#151621] p-3 rounded-xl border border-slate-800">
+            <span class="text-[11px] text-trough-muted block">Direct Gross Wages</span>
+            <span id="rosterGrossWages" class="text-xl font-bold font-mono text-white">$3,235.00</span>
+          </div>
+          <div class="bg-gradient-to-r from-trough-cardDark to-[#242738] p-3 rounded-xl border border-trough-yellow">
+            <span class="text-[11px] text-trough-yellow font-medium block">Total Roster Commitment</span>
+            <span id="rosterGrandTotal" class="text-xl font-bold font-mono text-trough-yellow">$3,235.00</span>
+          </div>
+        </div>
+
+        <!-- Award & IFA Compliance Note -->
+        <div class="bg-[#151621] p-4 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-2">
+          <h4 class="font-semibold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-circle-info text-trough-yellow"></i> Individual Flexibility Agreement (IFA) & BOOT Testing
+          </h4>
+          <p>
+            Under Trough X’s standard IFA framework, supervisory and floor rates are loaded to absorb weekend penalty rates, late-night allowances (post-midnight), and overtime, ensuring that each rostered worker is Better Off Overall than the base HIGA award. 
+          </p>
+          <div class="flex flex-wrap gap-4 text-[11px] pt-1 text-slate-300">
+            <span>&bull; Management/Security: $55.00/hr</span>
+            <span>&bull; Senior Bar Operations: $45.00/hr</span>
+            <span>&bull; Support, Cloak & Cleaning: $35.00/hr</span>
+            <span>&bull; On-Site Harm-Min Medic: $50.00/hr</span>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 4: PROMOTER DEAL ANALYZER ================= -->
+    <section id="view-promoter" class="tab-content hidden space-y-6">
+      
+      <!-- Contractual Structure Banner -->
+      <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="border-b border-slate-800 pb-3">
+          <span class="text-xs px-2.5 py-0.5 rounded bg-trough-yellow/10 text-trough-yellow font-semibold border border-trough-yellow/30 uppercase tracking-wider">Commercial Framework</span>
+          <h3 class="font-bold text-lg text-white mt-1">Standard Trough X Promoter Agreement ($5.00 Ticket Clip)</h3>
+          <p class="text-xs text-trough-muted">Standard venue hire structure executed with external promoters (e.g., BUSH, THROBB, POOF DOOF).</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          <div class="bg-[#151621] p-4 rounded-xl border border-slate-800 space-y-2">
+            <h4 class="font-semibold text-sm text-emerald-400 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check"></i> What Venue (Trough X) Captures & Retains
+            </h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li><strong class="text-white">$5.00 flat clip</strong> per paid ticket sold (deducted from promoter settlement).</li>
+              <li><strong class="text-white">100% of Beverage POS sales</strong> across all venue bars.</li>
+              <li><strong class="text-white">100% of Cloakroom revenue</strong> ($5.00 per garment/bag).</li>
+              <li><strong class="text-white">$550.00 non-refundable booking deposit</strong> paid upon date confirmation.</li>
+            </ul>
+          </div>
+
+          <div class="bg-[#151621] p-4 rounded-xl border border-slate-800 space-y-2">
+            <h4 class="font-semibold text-sm text-blue-400 flex items-center gap-2">
+              <i class="fa-solid fa-users"></i> What Venue (Trough X) Provides & Absorbs
+            </h4>
+            <ul class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+              <li>Full operational staffing roster (Duty Manager, Floor Supervisor, Bar Staff).</li>
+              <li>Contracted crowd control security (1:100 ratio) & door scanner personnel.</li>
+              <li>Mandatory dedicated harm-minimisation medic & medical supplies.</li>
+              <li>Full post-event bio-wash and cleaning team.</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Breakeven Math Card & Live Deal Viability Tester -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Breakeven Formula Breakdown (5 cols) -->
+        <div class="lg:col-span-5 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 space-y-4 shadow-sm">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <i class="fa-solid fa-calculator text-trough-yellow"></i> Promoter Breakeven Mathematics
+          </h3>
+          <p class="text-xs text-trough-muted">Because venue fixed operational wages must be cleared before the house turns a dollar of surplus:</p>
+
+          <div class="bg-[#14151F] p-4 rounded-xl border border-slate-800 space-y-3 text-xs font-mono">
+            <div>
+              <span class="text-slate-400 text-[11px] block">FIXED EVENT OPERATING OVERHEAD:</span>
+              <span class="text-sm font-bold text-white">$3,235 (Wages) + $300 (Consumables) = <span class="text-rose-400">$3,535.00</span></span>
+            </div>
+            <div>
+              <span class="text-slate-400 text-[11px] block">NET MARGIN HARVEST PER PATRON:</span>
+              <span class="text-sm font-bold text-white">$5.00 (Clip) + $17.55 (Bar Net) + $2.50 (Cloak) = <span class="text-emerald-400">$25.05 / Head</span></span>
+            </div>
+            <div class="pt-2 border-t border-slate-800">
+              <span class="text-slate-400 text-[11px] block">MATHEMATICAL BREAKEVEN ATTENDANCE:</span>
+              <div class="text-lg font-bold text-trough-yellow">141 to 144 Paid Patrons</div>
+              <p class="text-[11px] text-slate-400 font-sans mt-0.5">Below 144 patrons, venue operating wages exceed retained gross margin.</p>
+            </div>
+          </div>
+
+          <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-1">
+            <div class="font-semibold text-amber-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-triangle-exclamation"></i> Deposit Insulation Rule
+            </div>
+            <p class="text-[11px] text-slate-300">Collecting the $550.00 non-refundable booking deposit lowers venue breakeven from 144 down to <strong>121 paid patrons</strong>.</p>
+          </div>
+        </div>
+
+        <!-- Deal Viability Simulator (7 cols) -->
+        <div class="lg:col-span-7 bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 space-y-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+              <div>
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                  <i class="fa-solid fa-vial-circle-check text-trough-yellow"></i> Live Promoter Night Viability Tester
+                </h3>
+                <p class="text-xs text-trough-muted">Test any external promoter proposal against our real cost structures</p>
+              </div>
+              <span id="dealStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                PROFITABLE
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 font-medium">Promoter Anticipated Attendance</label>
+                <div class="relative">
+                  <input type="number" id="dealPax" value="220" min="50" max="300" oninput="calculatePromoterDeal()" class="w-full bg-[#151621] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none">
+                  <span class="absolute right-3 top-2 text-xs text-slate-500">PAX</span>
+                </div>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 font-medium">Anticipated Bar Spend / Head</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-2 text-xs text-slate-500">$</span>
+                  <input type="number" id="dealSpend" value="24.00" min="10" max="50" step="0.5" oninput="calculatePromoterDeal()" class="w-full bg-[#151621] border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-white font-mono focus:border-trough-yellow focus:outline-none">
+                  <span class="absolute right-3 top-2 text-xs text-slate-500">AUD</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Financial Summary Table -->
+            <div class="mt-4 bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-2 text-xs font-mono">
+              <div class="flex justify-between text-slate-300">
+                <span>Retained Ticket Clip ($5.00 &times; <span id="dealPaxDisplay">220</span>):</span>
+                <span id="dealClipTotal" class="font-bold text-white">$1,100.00</span>
+              </div>
+              <div class="flex justify-between text-slate-300">
+                <span>Retained Bar Sales:</span>
+                <span id="dealBarTotal" class="font-bold text-white">$5,280.00</span>
+              </div>
+              <div class="flex justify-between text-slate-300">
+                <span>Retained Cloakroom (50% check-in @ $5):</span>
+                <span id="dealCloakTotal" class="font-bold text-white">$550.00</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Less Beverage COGS (22%) & Consumables:</span>
+                <span id="dealCogsTotal" class="text-rose-400">($1,311.60)</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Less Mandatory Venue Wages (IFA Roster):</span>
+                <span id="dealWagesTotal" class="text-rose-400">($3,235.00)</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Less Merchant & Waste Incidentals:</span>
+                <span id="dealOverheadsTotal" class="text-rose-400">($250.00)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+            <div>
+              <span class="text-xs text-slate-400 block">Projected Venue Net Surplus</span>
+              <span id="dealNetResult" class="text-2xl font-bold font-mono text-trough-yellow">+$2,133.40</span>
+            </div>
+            <div id="dealVerdictBox" class="text-right">
+              <span class="text-xs font-semibold text-emerald-400 block"><i class="fa-solid fa-thumbs-up"></i> APPROVE BOOKING</span>
+              <span class="text-[11px] text-slate-400">Healthy wage coverage ratio</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 5: FORTHCOMING EVENTS CALENDAR ================= -->
+    <section id="view-calendar" class="tab-content hidden space-y-6">
+      
+      <div class="bg-trough-cardDark border border-trough-cardBorder rounded-2xl p-5 shadow-sm space-y-4">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <h3 class="font-bold text-sm text-white flex items-center gap-2">
+              <i class="fa-solid fa-calendar-days text-trough-yellow"></i> Trough X Confirmed & Pipeline Events Schedule
+            </h3>
+            <p class="text-xs text-trough-muted">Summer 2026/27 & Mardi Gras Festival Season at 273 Crown St</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400">Filter:</span>
+            <button onclick="filterEvents('all')" id="btnFilterAll" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-trough-yellow text-black">All (12)</button>
+            <button onclick="filterEvents('owned')" id="btnFilterOwned" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white">Owned Hero Nights</button>
+            <button onclick="filterEvents('promoter')" id="btnFilterPromoter" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white">Promoter Hosted ($5 Clip)</button>
+          </div>
+        </div>
+
+        <!-- Schedule Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-[#171822] text-slate-300 uppercase tracking-wider text-[10px] border-b border-trough-cardBorder">
+              <tr>
+                <th class="py-3 px-3">Date</th>
+                <th class="py-3 px-3">Event Title & Promoter</th>
+                <th class="py-3 px-3">Format</th>
+                <th class="py-3 px-3 text-center">Cap Target</th>
+                <th class="py-3 px-3 text-right">Venue Gross</th>
+                <th class="py-3 px-3 text-right">Venue Wages</th>
+                <th class="py-3 px-3 text-right text-trough-yellow font-bold">Net Operating Surplus</th>
+              </tr>
+            </thead>
+            <tbody id="eventsTableBody" class="divide-y divide-slate-800/80 text-slate-200">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pipeline Aggregates -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
+          <div class="bg-[#151621] p-3 rounded-xl border border-slate-800">
+            <span class="text-[11px] text-trough-muted block">Total Pipeline Venue Turnover</span>
+            <span id="calTotalGross" class="text-xl font-bold font-mono text-white">$133,350.00</span>
+          </div>
+          <div class="bg-[#151621] p-3 rounded-xl border border-slate-800">
+            <span class="text-[11px] text-trough-muted block">Committed Operational Wages</span>
+            <span id="calTotalWages" class="text-xl font-bold font-mono text-rose-300">($43,730.00)</span>
+          </div>
+          <div class="bg-gradient-to-r from-trough-cardDark to-[#242738] p-3 rounded-xl border border-trough-yellow">
+            <span class="text-[11px] text-trough-yellow font-medium block">Total Forecast Season Net Surplus</span>
+            <span id="calTotalSurplus" class="text-xl font-bold font-mono text-trough-yellow">+$54,845.00</span>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="no-print border-t border-trough-cardBorder bg-[#14151F] py-4 text-center text-xs text-trough-muted mt-8">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>Trough X Operating System &bull; 273 Crown St, Surry Hills NSW 2010</span>
+      </div>
+      <div>
+        <span>Flat-Rate IFA Roster Model &bull; BOOT Compliant &bull; Internal Management Confidential</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    /* =====================================================================
+       GLOBAL CONSTANTS & DATA STRUCTURES
+       ===================================================================== */
+    
+    // Default Roster Template
+    const DEFAULT_ROSTER = [
+      { role: "Venue Duty Manager", headcount: 1, hours: 8.0, rate: 55.0, hasSuper: true, notes: "Incident management, licensing compliance, cash reconciliation" },
+      { role: "Assistant Floor Supervisor", headcount: 1, hours: 7.0, rate: 55.0, hasSuper: true, notes: "Basement flow control (60 pax limit) & door capacity" },
+      { role: "Senior Bartenders", headcount: 2, hours: 7.5, rate: 45.0, hasSuper: true, notes: "Main bar and basement dispensary service" },
+      { role: "Door / Ticket Scanner & Cloak", headcount: 1, hours: 6.5, rate: 35.0, hasSuper: true, notes: "ID verification, wristbanding, ticket clip accounting" },
+      { role: "Floor Support / Glassie / Restroom", headcount: 1, hours: 6.5, rate: 35.0, hasSuper: true, notes: "Spill cleaning, glass clearing, restroom checks" },
+      { role: "Licensed Crowd Control (Security)", headcount: 2, hours: 7.0, rate: 55.0, hasSuper: false, notes: "1:100 Ratio, street line management (Contracted Agency)" },
+      { role: "Trained On-Site Medic", headcount: 1, hours: 6.0, rate: 50.0, hasSuper: false, notes: "Harm-minimisation & care officer (Mandatory permit condition)" },
+      { role: "Post-Event Cleaning Crew", headcount: 2, hours: 3.0, rate: 35.0, hasSuper: true, notes: "Bio-wash, floor sanitisation, commercial waste disposal" }
+    ];
+
+    let currentRoster = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+
+    // Calendar Events Pipeline Data
+    const EVENTS_DATA = [
+      { date: "14/11/2026", title: "ACTION by Thick N Juicy", type: "promoter", format: "Promoter Hosted", pax: 300, barGross: 10000, clip: 1500, ticketRev: 0, deposit: 0, wages: 4060, surplus: 4185 },
+      { date: "21/11/2026", title: "THROBB by brute.club", type: "promoter", format: "Promoter Hosted", pax: 280, barGross: 8000, clip: 1400, ticketRev: 0, deposit: 0, wages: 3860, surplus: 3125 },
+      { date: "28/11/2026", title: "Red Rave by POOF DOOF", type: "promoter", format: "Promoter Hosted", pax: 300, barGross: 10000, clip: 1500, ticketRev: 0, deposit: 0, wages: 4060, surplus: 4185 },
+      { date: "04/12/2026", title: "BUSH (2nd Edition)", type: "promoter", format: "Promoter Hosted", pax: 250, barGross: 7000, clip: 1250, ticketRev: 0, deposit: 550, wages: 3560, surplus: 2950 },
+      { date: "12/12/2026", title: "THROBB Festive Edition", type: "promoter", format: "Promoter Hosted", pax: 280, barGross: 8000, clip: 1400, ticketRev: 0, deposit: 0, wages: 3860, surplus: 3125 },
+      { date: "19/12/2026", title: "Trough Noir: Summer Edition", type: "owned", format: "Owned Hero Night", pax: 240, barGross: 6500, clip: 0, ticketRev: 7200, deposit: 0, wages: 3500, surplus: 6150 },
+      { date: "31/12/2026", title: "NYE Lock-In 2026/27", type: "owned", format: "Owned Hero Night", pax: 300, barGross: 12500, clip: 0, ticketRev: 12000, deposit: 0, wages: 4200, surplus: 12850 },
+      { date: "16/01/2027", title: "Bareback Cabaret Launch", type: "owned", format: "Owned Daytime", pax: 160, barGross: 4800, clip: 0, ticketRev: 3200, deposit: 0, wages: 2800, surplus: 2950 },
+      { date: "30/01/2027", title: "LNQD (Late Night Queer Dance)", type: "promoter", format: "Promoter Hosted", pax: 250, barGross: 7000, clip: 1250, ticketRev: 0, deposit: 0, wages: 3560, surplus: 2400 },
+      { date: "13/02/2027", title: "Mardi Gras Warmup: Sniffies Cruise", type: "owned", format: "Owned Hero Night", pax: 300, barGross: 11000, clip: 0, ticketRev: 9000, deposit: 0, wages: 4100, surplus: 9400 },
+      { date: "27/02/2027", title: "TROUGH Mardi Gras Festival Main", type: "owned", format: "Owned Festival", pax: 300, barGross: 15000, clip: 0, ticketRev: 15000, deposit: 0, wages: 4400, surplus: 15650 },
+      { date: "06/03/2027", title: "FK CLUB Recovery", type: "owned", format: "Owned Recovery", pax: 180, barGross: 5500, clip: 0, ticketRev: 4500, deposit: 0, wages: 2800, surplus: 4125 }
+    ];
+
+    // Simulator State
+    let simMode = 'owned'; // 'owned' or 'promoter'
+    let comparisonChartInstance = null;
+    let doughnutChartInstance = null;
+
+    /* =====================================================================
+       INITIALIZATION
+       ===================================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+      renderRosterTable();
+      initScenarioChart();
+      initCostDoughnut();
+      renderEventsTable('all');
+      runSimulation();
+      calculatePromoterDeal();
+    });
+
+    /* =====================================================================
+       NAVIGATION & TABS
+       ===================================================================== */
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-trough-yellow', 'text-black', 'font-semibold', 'shadow-sm');
+        btn.classList.add('text-slate-300');
+      });
+
+      document.querySelectorAll('.tab-content').forEach(view => {
+        view.classList.add('hidden');
+      });
+
+      const selectedBtn = document.getElementById(`tab-${tabId}`);
+      const selectedView = document.getElementById(`view-${tabId}`);
+
+      if (selectedBtn && selectedView) {
+        selectedBtn.classList.remove('text-slate-300');
+        selectedBtn.classList.add('bg-trough-yellow', 'text-black', 'font-semibold', 'shadow-sm');
+        selectedView.classList.remove('hidden');
+      }
+
+      // Resize chart if showing dashboard
+      if (tabId === 'dashboard' && comparisonChartInstance) {
+        comparisonChartInstance.resize();
+        if (doughnutChartInstance) doughnutChartInstance.resize();
+      }
+    }
+
+    function toggleSimModeQuick() {
+      if (simMode === 'owned') {
+        setSimMode('promoter');
+      } else {
+        setSimMode('owned');
+      }
+      switchTab('simulator');
+    }
+
+    /* =====================================================================
+       CHARTS IMPLEMENTATION
+       ===================================================================== */
+    function initScenarioChart() {
+      const ctx = document.getElementById('scenarioComparisonChart').getContext('2d');
+      comparisonChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Actual (11 Sept)', 'Owned (120 Pax)', 'Owned (200 Pax)', 'Owned Peak (280)', 'Promoter (200)'],
+          datasets: [
+            {
+              label: 'Gross Turnover',
+              data: [4881, 6060, 11000, 18440, 6000],
+              backgroundColor: '#4A5568',
+              borderRadius: 6,
+            },
+            {
+              label: 'Wages Roster',
+              data: [1290, 2560, 3235, 3980, 3235],
+              backgroundColor: '#F43F5E',
+              borderRadius: 6,
+            },
+            {
+              label: 'Net Surplus',
+              data: [2644, 1472, 4475, 9535, 1385],
+              backgroundColor: '#FFCC00',
+              borderRadius: 6,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.dataset.label}: $${context.raw.toLocaleString()}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#94A3B8', font: { family: 'Poppins', size: 10 } }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: {
+                color: '#94A3B8',
+                font: { family: 'Poppins', size: 10 },
+                callback: function(value) { return '$' + value; }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function initCostDoughnut() {
+      const ctx = document.getElementById('costDoughnutChart').getContext('2d');
+      doughnutChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Net Surplus', 'Direct Wages', 'Production & AV', 'Beverage COGS & Bar'],
+          datasets: [{
+            data: [4475, 3235, 2150, 1140],
+            backgroundColor: ['#FFCC00', '#F43F5E', '#3B82F6', '#10B981'],
+            borderColor: '#1E202C',
+            borderWidth: 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.label}: $${context.raw.toLocaleString()} AUD`;
+                }
+              }
+            }
+          },
+          cutout: '70%'
+        }
+      });
+    }
+
+    /* =====================================================================
+       BUDGET SIMULATOR ENGINE
+       ===================================================================== */
+    function setSimMode(mode) {
+      simMode = mode;
+      const btnOwned = document.getElementById('simModeOwned');
+      const btnPromoter = document.getElementById('simModePromoter');
+      const quickText = document.getElementById('quickModeText');
+      const ticketContainer = document.getElementById('ticketPriceContainer');
+      const promoterNotice = document.getElementById('promoterClipNotice');
+      const subtitle = document.getElementById('simStatementSubtitle');
+      const rowDeposit = document.getElementById('rowDeposit');
+
+      if (mode === 'owned') {
+        btnOwned.classList.remove('text-slate-300');
+        btnOwned.classList.add('bg-trough-yellow', 'text-black');
+        btnPromoter.classList.remove('bg-trough-yellow', 'text-black');
+        btnPromoter.classList.add('text-slate-300');
+        quickText.innerText = "Switch to Promoter Model ($5 Clip)";
+        ticketContainer.classList.remove('hidden');
+        promoterNotice.classList.add('hidden');
+        rowDeposit.classList.add('hidden');
+        subtitle.innerText = "Trough-Owned Event Baseline Model (100% Ticket Revenue Retained)";
+      } else {
+        btnPromoter.classList.remove('text-slate-300');
+        btnPromoter.classList.add('bg-trough-yellow', 'text-black');
+        btnOwned.classList.remove('bg-trough-yellow', 'text-black');
+        btnOwned.classList.add('text-slate-300');
+        quickText.innerText = "Switch to Trough-Owned Model";
+        ticketContainer.classList.add('hidden');
+        promoterNotice.classList.remove('hidden');
+        rowDeposit.classList.remove('hidden');
+        subtitle.innerText = "Promoter Hosted Model ($5.00 Ticket Clip + 100% Bar/Cloak Retained)";
+      }
+
+      runSimulation();
+    }
+
+    function runSimulation() {
+      const pax = parseInt(document.getElementById('simPax').value);
+      const ticketPrice = parseFloat(document.getElementById('simTicketPrice').value);
+      const barSpend = parseFloat(document.getElementById('simBarSpend').value);
+      const cloakRate = parseFloat(document.getElementById('simCloakRate').value) / 100;
+      const cogsRate = parseFloat(document.getElementById('simCogsRate').value) / 100;
+      const includeDeposit = document.getElementById('simPromoterDeposit').checked;
+
+      // Update Slider Labels
+      document.getElementById('displayPax').innerText = `${pax} Pax`;
+      document.getElementById('displayTicketPrice').innerText = `$${ticketPrice.toFixed(2)} AUD`;
+      document.getElementById('displayBarSpend').innerText = `$${barSpend.toFixed(2)} AUD`;
+      document.getElementById('displayCloakRate').innerText = `${Math.round(cloakRate * 100)}% ($5.00 / item)`;
+      document.getElementById('displayCogsRate').innerText = `${(cogsRate * 100).toFixed(1)}%`;
+      document.getElementById('simLabelCogsPct').innerText = `${(cogsRate * 100).toFixed(1)}%`;
+
+      // 1. Revenue Calculations
+      let ticketRevenue = 0;
+      let depositRevenue = 0;
+
+      if (simMode === 'owned') {
+        ticketRevenue = pax * ticketPrice;
+        document.getElementById('lineItemTicketLabel').innerText = `Ticket Sales (${pax} @ $${ticketPrice.toFixed(2)}):`;
+      } else {
+        ticketRevenue = pax * 5.00; // $5 clip
+        depositRevenue = includeDeposit ? 550.00 : 0.0;
+        document.getElementById('lineItemTicketLabel').innerText = `Venue Ticket Clip (${pax} @ $5.00):`;
+        document.getElementById('simValDeposit').innerText = `$${depositRevenue.toFixed(2)}`;
+      }
+
+      const barRevenue = pax * barSpend;
+      const cloakItems = Math.round(pax * cloakRate);
+      const cloakRevenue = cloakItems * 5.00;
+      const grossTurnover = ticketRevenue + barRevenue + cloakRevenue + depositRevenue;
+
+      // 2. Direct COGS
+      const beverageCogs = barRevenue * cogsRate;
+      const consumables = pax > 220 ? 200.00 : (pax > 150 ? 150.00 : 100.00);
+      const grossMargin = grossTurnover - beverageCogs - consumables;
+
+      // 3. Dynamic Wages based on Crowd Size
+      let guards = 2;
+      if (pax > 240) guards = 3; // 1:100 ratio
+      let bartenders = 2;
+      if (pax > 220) bartenders = 3;
+
+      let baseRosterWages = calculateDynamicWages(guards, bartenders);
+      let talentCost = simMode === 'owned' ? (pax > 240 ? 1200 : (pax > 150 ? 900 : 600)) : 0; // Promoter pays talent
+      let productionCost = simMode === 'owned' ? (pax > 240 ? 600 : 450) : 150; // Cleaning/amenities
+      let terminalFees = grossTurnover * 0.015; // 1.5% merchant processing
+      let marketingCost = simMode === 'owned' ? 400 : 0;
+      let totalOverheads = talentCost + productionCost + terminalFees + marketingCost;
+
+      // 4. Net Operating Surplus
+      const netSurplus = grossMargin - baseRosterWages - totalOverheads;
+      const wageRatio = grossTurnover > 0 ? (baseRosterWages / grossTurnover) * 100 : 0;
+      const marginRatio = grossTurnover > 0 ? (netSurplus / grossTurnover) * 100 : 0;
+
+      // Update DOM
+      document.getElementById('simValTicketRev').innerText = `$${ticketRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('simValBarRev').innerText = `$${barRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('simValCloakRev').innerText = `$${cloakRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('simValGrossTurnover').innerText = `$${grossTurnover.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      document.getElementById('simValCogs').innerText = `($${beverageCogs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      document.getElementById('simValConsumables').innerText = `($${consumables.toFixed(2)})`;
+      document.getElementById('simValGrossMargin').innerText = `$${grossMargin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      document.getElementById('simValWages').innerText = `($${baseRosterWages.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      document.getElementById('simStaffCountBadge').innerText = `${8 + bartenders - 2 + guards - 2} Staff (${guards} Guards)`;
+      document.getElementById('simValTalent').innerText = talentCost > 0 ? `($${talentCost.toFixed(2)})` : "$0.00 (Promoter Covered)";
+      document.getElementById('simValProduction').innerText = `($${productionCost.toFixed(2)})`;
+      document.getElementById('simValMarketing').innerText = `($${(marketingCost + terminalFees).toFixed(2)})`;
+
+      const surplusElem = document.getElementById('simValNetSurplus');
+      const statusPill = document.getElementById('simStatusPill');
+
+      if (netSurplus >= 0) {
+        surplusElem.innerText = `+$${netSurplus.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        surplusElem.className = "text-3xl font-extrabold text-trough-yellow font-mono tracking-tight";
+        statusPill.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30 flex items-center gap-1.5";
+        statusPill.innerHTML = `<i class="fa-solid fa-circle-check"></i> HIGH SURPLUS`;
+      } else {
+        surplusElem.innerText = `-$${Math.abs(netSurplus).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        surplusElem.className = "text-3xl font-extrabold text-rose-400 font-mono tracking-tight";
+        statusPill.className = "text-xs px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30 flex items-center gap-1.5";
+        statusPill.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> OPERATING DEFICIT`;
+      }
+
+      const wageRatioElem = document.getElementById('simValWageRatio');
+      wageRatioElem.innerText = `${wageRatio.toFixed(1)}%`;
+      if (wageRatio > 35) {
+        wageRatioElem.className = "font-bold text-rose-400";
+      } else if (wageRatio > 30) {
+        wageRatioElem.className = "font-bold text-amber-400";
+      } else {
+        wageRatioElem.className = "font-bold text-emerald-400";
+      }
+
+      document.getElementById('simValMarginRatio').innerText = `${marginRatio.toFixed(1)}%`;
+    }
+
+    function calculateDynamicWages(guards, bartenders) {
+      let total = 0;
+      currentRoster.forEach(item => {
+        let count = item.headcount;
+        if (item.role.includes("Security")) count = guards;
+        if (item.role.includes("Bartenders")) count = bartenders;
+        const sub = count * item.hours * item.rate;
+        total += sub;
+      });
+      return total;
+    }
+
+    function resetSimulatorDefaults() {
+      document.getElementById('simPax').value = 200;
+      document.getElementById('simTicketPrice').value = 30;
+      document.getElementById('simBarSpend').value = 22.50;
+      document.getElementById('simCloakRate').value = 50;
+      document.getElementById('simCogsRate').value = 22.0;
+      document.getElementById('simPromoterDeposit').checked = true;
+      setSimMode('owned');
+    }
+
+    /* =====================================================================
+       WAGE CALCULATOR & ROSTER ENGINE
+       ===================================================================== */
+    function renderRosterTable() {
+      const tbody = document.getElementById('rosterTableBody');
+      tbody.innerHTML = '';
+
+      currentRoster.forEach((item, index) => {
+        const row = document.createElement('tr');
+        row.className = "hover:bg-slate-800/40 transition";
+        row.innerHTML = `
+          <td class="py-3 px-3">
+            <div class="font-medium text-white">${item.role}</div>
+            <div class="text-[11px] text-slate-400">${item.notes}</div>
+          </td>
+          <td class="py-3 px-3 text-center">
+            <input type="number" min="1" max="6" value="${item.headcount}" onchange="updateRosterItem(${index}, 'headcount', this.value)" class="w-14 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs">
+          </td>
+          <td class="py-3 px-3 text-center">
+            <input type="number" step="0.5" min="2" max="12" value="${item.hours}" onchange="updateRosterItem(${index}, 'hours', this.value)" class="w-16 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs">
+          </td>
+          <td class="py-3 px-3 text-center">
+            <div class="inline-flex items-center">
+              <span class="text-slate-500 mr-1">$</span>
+              <input type="number" step="1" min="25" max="80" value="${item.rate}" onchange="updateRosterItem(${index}, 'rate', this.value)" class="w-16 bg-[#151621] border border-slate-700 rounded px-2 py-1 text-center font-mono text-white text-xs">
+            </div>
+          </td>
+          <td class="py-3 px-3 text-center font-mono">
+            ${item.hasSuper ? '<span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px]">11.5% IFA</span>' : '<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">Contracted 0%</span>'}
+          </td>
+          <td class="py-3 px-3 text-right font-mono font-bold text-white" id="rosterItemTotal-${index}">
+            $0.00
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      calculateRosterTotal();
+    }
+
+    function updateRosterItem(index, field, value) {
+      currentRoster[index][field] = parseFloat(value) || 0;
+      calculateRosterTotal();
+      runSimulation();
+    }
+
+    function calculateRosterTotal() {
+      const applySuper = document.getElementById('wagesIncludeSuper').checked;
+      let totalHeadcount = 0;
+      let totalHours = 0;
+      let grossWages = 0;
+      let grandTotal = 0;
+
+      currentRoster.forEach((item, index) => {
+        const itemHours = item.headcount * item.hours;
+        const baseCost = itemHours * item.rate;
+        const superCost = (applySuper && item.hasSuper) ? baseCost * 0.115 : 0;
+        const itemTotal = baseCost + superCost;
+
+        totalHeadcount += item.headcount;
+        totalHours += itemHours;
+        grossWages += baseCost;
+        grandTotal += itemTotal;
+
+        const cell = document.getElementById(`rosterItemTotal-${index}`);
+        if (cell) {
+          cell.innerText = `$${itemTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+      });
+
+      document.getElementById('rosterTotalHeadcount').innerText = `${totalHeadcount} Staff`;
+      document.getElementById('rosterTotalHours').innerText = `${totalHours.toFixed(1)} Hrs`;
+      document.getElementById('rosterGrossWages').innerText = `$${grossWages.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('rosterGrandTotal').innerText = `$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function resetRosterDefaults() {
+      currentRoster = JSON.parse(JSON.stringify(DEFAULT_ROSTER));
+      renderRosterTable();
+    }
+
+    /* =====================================================================
+       PROMOTER DEAL TESTER
+       ===================================================================== */
+    function calculatePromoterDeal() {
+      const pax = parseInt(document.getElementById('dealPax').value) || 0;
+      const spend = parseFloat(document.getElementById('dealSpend').value) || 0;
+
+      document.getElementById('dealPaxDisplay').innerText = pax;
+
+      const clipTotal = pax * 5.00;
+      const barTotal = pax * spend;
+      const cloakTotal = (pax * 0.5) * 5.00;
+      const grossTurnover = clipTotal + barTotal + cloakTotal;
+
+      const cogs = barTotal * 0.22 + 150.00; // 22% + consumables
+      const wages = 3235.00;
+      const overheads = grossTurnover * 0.015 + 150.00;
+
+      const netSurplus = grossTurnover - cogs - wages - overheads;
+
+      document.getElementById('dealClipTotal').innerText = `$${clipTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('dealBarTotal').innerText = `$${barTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('dealCloakTotal').innerText = `$${cloakTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('dealCogsTotal').innerText = `($${cogs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      document.getElementById('dealWagesTotal').innerText = `($${wages.toFixed(2)})`;
+      document.getElementById('dealOverheadsTotal').innerText = `($${overheads.toFixed(2)})`;
+
+      const resultElem = document.getElementById('dealNetResult');
+      const badgeElem = document.getElementById('dealStatusBadge');
+      const verdictBox = document.getElementById('dealVerdictBox');
+
+      if (netSurplus >= 0) {
+        resultElem.innerText = `+$${netSurplus.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        resultElem.className = "text-2xl font-bold font-mono text-trough-yellow";
+        badgeElem.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30";
+        badgeElem.innerText = "PROFITABLE";
+        verdictBox.innerHTML = `
+          <span class="text-xs font-semibold text-emerald-400 block"><i class="fa-solid fa-thumbs-up"></i> APPROVE BOOKING</span>
+          <span class="text-[11px] text-slate-400">Yield clears venue fixed wage base</span>
+        `;
+      } else {
+        resultElem.innerText = `-$${Math.abs(netSurplus).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        resultElem.className = "text-2xl font-bold font-mono text-rose-400";
+        badgeElem.className = "text-xs px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30";
+        badgeElem.innerText = "DEFICIT RISK";
+        verdictBox.innerHTML = `
+          <span class="text-xs font-semibold text-rose-400 block"><i class="fa-solid fa-hand"></i> REQUIRE LABOUR GUARANTEE</span>
+          <span class="text-[11px] text-slate-400">Demand $1,000 venue deposit/guarantee</span>
+        `;
+      }
+    }
+
+    /* =====================================================================
+       FORTHCOMING EVENTS CALENDAR
+       ===================================================================== */
+    function filterEvents(type) {
+      document.getElementById('btnFilterAll').className = "px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white";
+      document.getElementById('btnFilterOwned').className = "px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white";
+      document.getElementById('btnFilterPromoter').className = "px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:text-white";
+
+      if (type === 'all') document.getElementById('btnFilterAll').className = "px-2.5 py-1 rounded-lg text-xs font-semibold bg-trough-yellow text-black";
+      if (type === 'owned') document.getElementById('btnFilterOwned').className = "px-2.5 py-1 rounded-lg text-xs font-semibold bg-trough-yellow text-black";
+      if (type === 'promoter') document.getElementById('btnFilterPromoter').className = "px-2.5 py-1 rounded-lg text-xs font-semibold bg-trough-yellow text-black";
+
+      renderEventsTable(type);
+    }
+
+    function renderEventsTable(filter) {
+      const tbody = document.getElementById('eventsTableBody');
+      tbody.innerHTML = '';
+
+      let filtered = EVENTS_DATA;
+      if (filter === 'owned') filtered = EVENTS_DATA.filter(e => e.type === 'owned');
+      if (filter === 'promoter') filtered = EVENTS_DATA.filter(e => e.type === 'promoter');
+
+      let totalGross = 0;
+      let totalWages = 0;
+      let totalSurplus = 0;
+
+      filtered.forEach(item => {
+        const gross = item.barGross + item.clip + item.ticketRev + item.deposit;
+        totalGross += gross;
+        totalWages += item.wages;
+        totalSurplus += item.surplus;
+
+        const row = document.createElement('tr');
+        row.className = "hover:bg-slate-800/40 transition";
+        row.innerHTML = `
+          <td class="py-3 px-3 font-mono font-medium text-slate-300 whitespace-nowrap">${item.date}</td>
+          <td class="py-3 px-3">
+            <span class="font-semibold text-white block">${item.title}</span>
+            <span class="text-[11px] text-slate-400">${item.type === 'promoter' ? '$5 Ticket Clip Agreement' : 'Full In-House Trough Production'}</span>
+          </td>
+          <td class="py-3 px-3">
+            <span class="px-2 py-0.5 rounded text-[10px] font-medium ${item.type === 'owned' ? 'bg-trough-yellow/15 text-trough-yellow border border-trough-yellow/30' : 'bg-slate-800 text-slate-300 border border-slate-700'}">
+              ${item.format}
+            </span>
+          </td>
+          <td class="py-3 px-3 text-center font-mono font-semibold text-slate-200">${item.pax} Pax</td>
+          <td class="py-3 px-3 text-right font-mono text-slate-200">$${gross.toLocaleString()}</td>
+          <td class="py-3 px-3 text-right font-mono text-rose-300">($${item.wages.toLocaleString()})</td>
+          <td class="py-3 px-3 text-right font-mono font-bold text-trough-yellow">+$${item.surplus.toLocaleString()}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById('calTotalGross').innerText = `$${totalGross.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+      document.getElementById('calTotalWages').innerText = `($${totalWages.toLocaleString('en-US', { minimumFractionDigits: 2 })})`;
+      document.getElementById('calTotalSurplus').innerText = `+$${totalSurplus.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    }
+  </script>
+</body>
+</html>

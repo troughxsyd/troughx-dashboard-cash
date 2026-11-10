@@ -1,0 +1,6 @@
+{
+  "name": "Trough X Event Budget Model",
+  "description": "Comprehensive event budgeting, multi-tier ticketing revenue simulation, categorized expense modeling, break-even analysis, and AI financial advisory for Trough X Sydney.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
