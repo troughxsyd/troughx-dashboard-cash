@@ -5,16 +5,107 @@ import {
   signInWithPopup,
   signOut as fbSignOut,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  getDocFromServer,
+  setDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { PipelineEvent, RosterItem } from '../App';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Scopes approved via set_up_oauth
+// Validate connection to Firestore on boot
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+  }
+}
+testConnection();
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Scopes approved via set_up_oauth (Sheets + Calendar + Google Drive)
 export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.activity',
+  'https://www.googleapis.com/auth/drive.activity.readonly',
+  'https://www.googleapis.com/auth/drive.appdata',
+  'https://www.googleapis.com/auth/drive.apps.readonly',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.install',
+  'https://www.googleapis.com/auth/drive.meet.readonly',
+  'https://www.googleapis.com/auth/drive.metadata',
+  'https://www.googleapis.com/auth/drive.metadata.readonly',
+  'https://www.googleapis.com/auth/drive.photos.readonly',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.scripts',
 ];
 
 export const DEFAULT_CALENDAR_URL =
@@ -917,3 +1008,404 @@ export async function createTroughMasterSpreadsheet(
 
   return fetchSpreadsheetMetadata(spreadsheetId);
 }
+
+// ============================================================================
+// GOOGLE DRIVE API INTEGRATION
+// ============================================================================
+
+export interface DriveFileItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  size?: string;
+  webViewLink?: string;
+  iconLink?: string;
+}
+
+export async function listDriveFiles(
+  filterType: 'all' | 'spreadsheets' | 'folders' | 'trough' = 'all',
+  searchQuery = ''
+): Promise<DriveFileItem[]> {
+  const token = await getAccessToken();
+  const clauses: string[] = ['trashed = false'];
+
+  if (filterType === 'spreadsheets') {
+    clauses.push("mimeType = 'application/vnd.google-apps.spreadsheet'");
+  } else if (filterType === 'folders') {
+    clauses.push("mimeType = 'application/vnd.google-apps.folder'");
+  } else if (filterType === 'trough') {
+    clauses.push("name contains 'Trough'");
+  }
+
+  if (searchQuery.trim()) {
+    const safeSearch = searchQuery.trim().replace(/'/g, "\\'");
+    clauses.push(`name contains '${safeSearch}'`);
+  }
+
+  const params = new URLSearchParams({
+    pageSize: '25',
+    orderBy: 'modifiedTime desc',
+    fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)',
+    q: clauses.join(' and '),
+  });
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(
+      errBody?.error?.message || `Failed to list Google Drive files (${res.status}).`
+    );
+  }
+
+  const data = await res.json();
+  return (data.files || []) as DriveFileItem[];
+}
+
+/**
+ * Exports a Trough X report or CSV/JSON snapshot to Google Drive.
+ * MUST only be called after explicit user confirmation in the UI modal.
+ */
+export async function exportFileToDrive(
+  fileName: string,
+  content: string,
+  mimeType: string,
+  folderId?: string
+): Promise<DriveFileItem> {
+  const token = await getAccessToken();
+
+  const metadata: Record<string, unknown> = {
+    name: fileName,
+    mimeType,
+  };
+  if (folderId && folderId.trim()) {
+    metadata.parents = [folderId.trim()];
+  }
+
+  const boundary = 'trough_x_drive_multipart_boundary';
+  const multipartBody =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType}; charset=UTF-8\r\n\r\n` +
+    `${content}\r\n` +
+    `--${boundary}--`;
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime,size,webViewLink',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartBody,
+    }
+  );
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(
+      errBody?.error?.message || `Failed to upload file to Google Drive (${res.status}).`
+    );
+  }
+
+  return (await res.json()) as DriveFileItem;
+}
+
+/**
+ * Deletes a file from Google Drive.
+ * MUST only be called after explicit user confirmation in the UI modal.
+ */
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const token = await getAccessToken();
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!res.ok && res.status !== 204) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(
+      errBody?.error?.message || `Failed to delete file from Google Drive (${res.status}).`
+    );
+  }
+}
+
+export function buildDriveCsvFromRows(rows: (string | number)[][]): string {
+  return rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const str = String(cell ?? '');
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        })
+        .join(',')
+    )
+    .join('\r\n');
+}
+
+// ============================================================================
+// FIREBASE FIRESTORE CLOUD PERSISTENCE
+// ============================================================================
+
+const ID_REGEX = /^[a-zA-Z0-9_\-]+$/;
+
+function sanitizeValidId(raw: string, fallbackPrefix: string): string {
+  const cleaned = raw.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 120);
+  if (!cleaned || !ID_REGEX.test(cleaned)) {
+    return `${fallbackPrefix}_${Date.now()}`;
+  }
+  return cleaned;
+}
+
+export interface CloudWorkspaceSnapshot {
+  workspaceTitle: string;
+  linkedSheetUrl: string;
+  linkedCalendarId: string;
+  linkedDriveFolderId: string;
+  wagesIncludeSuper: boolean;
+  simTicketClip: number;
+  dealClip: number;
+  events: PipelineEvent[];
+  roster: RosterItem[];
+}
+
+export async function saveWorkspaceToFirestore(
+  snapshot: CloudWorkspaceSnapshot
+): Promise<{ eventsSaved: number; rosterSaved: number }> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Sign in with Google first to save your workspace to Firebase Cloud.');
+  }
+
+  const uid = sanitizeValidId(user.uid, 'user');
+  const configPath = `workspaceConfigs/${uid}`;
+
+  // 1. Save or update WorkspaceConfig document
+  try {
+    const configRef = doc(db, 'workspaceConfigs', uid);
+    const existingSnap = await getDoc(configRef);
+    const cleanTitle = (snapshot.workspaceTitle || 'Trough X Sydney Operating Model').slice(
+      0,
+      120
+    );
+    const cleanSheetUrl = (snapshot.linkedSheetUrl || '').slice(0, 500);
+    const cleanCalendarId = (snapshot.linkedCalendarId || DEFAULT_CALENDAR_ID).slice(0, 200);
+    const cleanFolderId = (snapshot.linkedDriveFolderId || '').slice(0, 128);
+    const cleanSimClip = Math.min(500, Math.max(0, Number(snapshot.simTicketClip) || 0));
+    const cleanDealClip = Math.min(500, Math.max(0, Number(snapshot.dealClip) || 0));
+
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      await setDoc(configRef, {
+        ownerId: user.uid,
+        workspaceTitle: cleanTitle,
+        linkedSheetUrl: cleanSheetUrl,
+        linkedCalendarId: cleanCalendarId,
+        linkedDriveFolderId: cleanFolderId,
+        wagesIncludeSuper: Boolean(snapshot.wagesIncludeSuper),
+        simTicketClip: cleanSimClip,
+        dealClip: cleanDealClip,
+        createdAt: existingData.createdAt,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(configRef, {
+        ownerId: user.uid,
+        workspaceTitle: cleanTitle,
+        linkedSheetUrl: cleanSheetUrl,
+        linkedCalendarId: cleanCalendarId,
+        linkedDriveFolderId: cleanFolderId,
+        wagesIncludeSuper: Boolean(snapshot.wagesIncludeSuper),
+        simTicketClip: cleanSimClip,
+        dealClip: cleanDealClip,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, configPath);
+  }
+
+  // 2. Sync pipelineEvents for this user
+  const eventsCollectionPath = 'pipelineEvents';
+  try {
+    const existingEventsQuery = query(
+      collection(db, 'pipelineEvents'),
+      where('ownerId', '==', user.uid)
+    );
+    const existingEventsSnap = await getDocs(existingEventsQuery);
+    for (const docSnap of existingEventsSnap.docs) {
+      await deleteDoc(doc(db, 'pipelineEvents', docSnap.id));
+    }
+
+    for (let i = 0; i < snapshot.events.length; i++) {
+      const ev = snapshot.events[i];
+      const eventDocId = sanitizeValidId(`${uid}_evt_${i}`, 'evt');
+      await setDoc(doc(db, 'pipelineEvents', eventDocId), {
+        ownerId: user.uid,
+        date: (ev.date || 'TBC').slice(0, 32),
+        title: (ev.title || 'Untitled Trough X Event').slice(0, 160),
+        type: ev.type === 'owned' ? 'owned' : 'promoter',
+        format: (ev.format || 'Promoter Hosted').slice(0, 80),
+        pax: Math.min(1000, Math.max(0, Math.round(Number(ev.pax) || 0))),
+        barGross: Math.min(500000, Math.max(0, Number(ev.barGross) || 0)),
+        clip: Math.min(100000, Math.max(0, Number(ev.clip) || 0)),
+        ticketRev: Math.min(500000, Math.max(0, Number(ev.ticketRev) || 0)),
+        deposit: Math.min(50000, Math.max(0, Number(ev.deposit) || 0)),
+        wages: Math.min(100000, Math.max(0, Number(ev.wages) || 0)),
+        surplus: Math.min(500000, Math.max(-100000, Number(ev.surplus) || 0)),
+        sortOrder: i,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, eventsCollectionPath);
+  }
+
+  // 3. Sync active rosterItems for this user
+  const rosterCollectionPath = 'rosterItems';
+  try {
+    const existingRosterQuery = query(
+      collection(db, 'rosterItems'),
+      where('ownerId', '==', user.uid)
+    );
+    const existingRosterSnap = await getDocs(existingRosterQuery);
+    for (const docSnap of existingRosterSnap.docs) {
+      await deleteDoc(doc(db, 'rosterItems', docSnap.id));
+    }
+
+    for (let i = 0; i < snapshot.roster.length; i++) {
+      const r = snapshot.roster[i];
+      const rosterDocId = sanitizeValidId(`${uid}_role_${i}`, 'role');
+      await setDoc(doc(db, 'rosterItems', rosterDocId), {
+        ownerId: user.uid,
+        templateId: 'active',
+        templateName: 'Baseline 200 Pax Roster (Active)',
+        role: (r.role || 'Operational Staff').slice(0, 120),
+        headcount: Math.min(50, Math.max(0, Number(r.headcount) || 0)),
+        hours: Math.min(24, Math.max(0, Number(r.hours) || 0)),
+        rate: Math.min(500, Math.max(0, Number(r.rate) || 0)),
+        hasSuper: Boolean(r.hasSuper),
+        notes: (r.notes || '').slice(0, 300),
+        sortOrder: i,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, rosterCollectionPath);
+  }
+
+  return {
+    eventsSaved: snapshot.events.length,
+    rosterSaved: snapshot.roster.length,
+  };
+}
+
+export async function loadWorkspaceFromFirestore(): Promise<Partial<CloudWorkspaceSnapshot> | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+
+  const uid = sanitizeValidId(user.uid, 'user');
+  const result: Partial<CloudWorkspaceSnapshot> = {};
+
+  try {
+    const configSnap = await getDoc(doc(db, 'workspaceConfigs', uid));
+    if (configSnap.exists()) {
+      const data = configSnap.data();
+      result.workspaceTitle = data.workspaceTitle;
+      result.linkedSheetUrl = data.linkedSheetUrl;
+      result.linkedCalendarId = data.linkedCalendarId;
+      result.linkedDriveFolderId = data.linkedDriveFolderId;
+      result.wagesIncludeSuper = data.wagesIncludeSuper;
+      result.simTicketClip = data.simTicketClip;
+      result.dealClip = data.dealClip;
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `workspaceConfigs/${uid}`);
+  }
+
+  try {
+    const eventsQuery = query(
+      collection(db, 'pipelineEvents'),
+      where('ownerId', '==', user.uid)
+    );
+    const eventsSnap = await getDocs(eventsQuery);
+    if (!eventsSnap.empty) {
+      const loadedEvents = eventsSnap.docs
+        .map((d) => d.data())
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+        .map((d) => ({
+          date: String(d.date || 'TBC'),
+          title: String(d.title || 'Event'),
+          type: (d.type === 'owned' ? 'owned' : 'promoter') as 'owned' | 'promoter',
+          format: String(d.format || 'Promoter Hosted'),
+          pax: Number(d.pax) || 0,
+          barGross: Number(d.barGross) || 0,
+          clip: Number(d.clip) || 0,
+          ticketRev: Number(d.ticketRev) || 0,
+          deposit: Number(d.deposit) || 0,
+          wages: Number(d.wages) || 0,
+          surplus: Number(d.surplus) || 0,
+        }));
+      result.events = loadedEvents;
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'pipelineEvents');
+  }
+
+  try {
+    const rosterQuery = query(
+      collection(db, 'rosterItems'),
+      where('ownerId', '==', user.uid)
+    );
+    const rosterSnap = await getDocs(rosterQuery);
+    if (!rosterSnap.empty) {
+      const loadedRoster = rosterSnap.docs
+        .map((d) => d.data())
+        .filter((d) => !d.templateId || d.templateId === 'active')
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+        .map((d) => ({
+          role: String(d.role || 'Staff'),
+          headcount: Number(d.headcount) || 0,
+          hours: Number(d.hours) || 0,
+          rate: Number(d.rate) || 0,
+          hasSuper: Boolean(d.hasSuper),
+          notes: String(d.notes || ''),
+        }));
+      if (loadedRoster.length > 0) {
+        result.roster = loadedRoster;
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'rosterItems');
+  }
+
+  if (
+    result.workspaceTitle === undefined &&
+    !result.events?.length &&
+    !result.roster?.length
+  ) {
+    return null;
+  }
+
+  return result;
+}
+

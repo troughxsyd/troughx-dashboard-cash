@@ -902,15 +902,17 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-trough-bgDark text-slate-100 antialiased selection:bg-trough-yellow selection:text-black">
+    <div className="min-h-screen flex flex-col bg-[#222222] text-slate-100 antialiased selection:bg-trough-yellow selection:text-black">
       {/* TOP HEADER / NAV */}
-      <header className="no-print border-b border-trough-cardBorder bg-[#181924]/90 sticky top-0 z-40 backdrop-blur-md">
+      <header className="no-print border-b border-trough-cardBorder bg-[#222222]/95 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
           {/* Brand & Location */}
           <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-xl bg-trough-yellow flex items-center justify-center font-extrabold text-black text-xl shadow-[0_0_15px_rgba(255,204,0,0.35)]">
-              TX
-            </div>
+            <img
+              src="https://cdn.prod.website-files.com/69efc0068b16fc7a61e4f47e/6ae80e7d51e9ca54c2e6f5d4_TROUGH-X-LOGO.png"
+              alt="Trough X Logo"
+              className="h-10 w-auto object-contain rounded-lg"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-lg tracking-tight text-white">
@@ -968,7 +970,7 @@ export default function App() {
         </div>
 
         {/* TAB NAVIGATION BAR */}
-        <div className="border-t border-trough-cardBorder bg-[#14151F]">
+        <div className="border-t border-trough-cardBorder bg-[#1C1C1C]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-3 overflow-x-auto py-1.5 text-xs font-medium scrollbar-none">
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -2495,6 +2497,20 @@ export default function App() {
               onUpdateEvents={handleUpdateEvents}
               onResetDefaultEvents={handleResetDefaultEvents}
               roster={roster}
+              onUpdateRoster={(nextRoster, nextSuper) => {
+                setRoster(nextRoster);
+                if (typeof nextSuper === 'boolean') {
+                  setWagesIncludeSuper(nextSuper);
+                }
+                try {
+                  localStorage.setItem(STORAGE_KEYS.ROSTER, JSON.stringify(nextRoster));
+                  if (typeof nextSuper === 'boolean') {
+                    localStorage.setItem(STORAGE_KEYS.ROSTER_SUPER, JSON.stringify(nextSuper));
+                  }
+                } catch {
+                  // Ignore
+                }
+              }}
               wagesIncludeSuper={wagesIncludeSuper}
               simulatorSnapshot={simulatorSnapshot}
             />

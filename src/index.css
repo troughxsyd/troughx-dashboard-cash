@@ -10,10 +10,10 @@
   --color-trough-yellowHover: #E5B800;
   --color-trough-yellowDark: #B38F00;
   --color-trough-yellowLight: #FFF8DB;
-  --color-trough-bgDark: #13141C;
-  --color-trough-cardDark: #1E202C;
-  --color-trough-cardBorder: #2E3247;
-  --color-trough-steelGrey: #2B2D42;
+  --color-trough-bgDark: rgb(34, 34, 34);
+  --color-trough-cardDark: #2B2B2B;
+  --color-trough-cardBorder: #3D3D3D;
+  --color-trough-steelGrey: #333333;
   --color-trough-steelSlate: #4A5568;
   --color-trough-muted: #94A3B8;
 }
@@ -21,7 +21,7 @@
 @layer base {
   body {
     font-family: 'Poppins', sans-serif;
-    background-color: #13141C;
+    background-color: rgb(34, 34, 34);
     color: #F8FAFC;
   }
 }

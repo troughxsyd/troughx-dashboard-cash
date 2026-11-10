@@ -1,0 +1,363 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprint 1: WorkspaceConfig
+    function isValidWorkspaceConfig(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'workspaceTitle',
+          'linkedSheetUrl',
+          'linkedCalendarId',
+          'linkedDriveFolderId',
+          'wagesIncludeSuper',
+          'simTicketClip',
+          'dealClip',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'workspaceTitle',
+          'linkedSheetUrl',
+          'linkedCalendarId',
+          'linkedDriveFolderId',
+          'wagesIncludeSuper',
+          'simTicketClip',
+          'dealClip',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.workspaceTitle is string
+        && data.workspaceTitle.size() >= 1
+        && data.workspaceTitle.size() <= 120
+        && data.linkedSheetUrl is string
+        && data.linkedSheetUrl.size() <= 500
+        && data.linkedCalendarId is string
+        && data.linkedCalendarId.size() >= 1
+        && data.linkedCalendarId.size() <= 200
+        && data.linkedDriveFolderId is string
+        && data.linkedDriveFolderId.size() <= 128
+        && data.wagesIncludeSuper is bool
+        && data.simTicketClip is number
+        && data.simTicketClip >= 0
+        && data.simTicketClip <= 500
+        && data.dealClip is number
+        && data.dealClip >= 0
+        && data.dealClip <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint 2: PipelineEventDoc
+    function isValidPipelineEvent(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'date',
+          'title',
+          'type',
+          'format',
+          'pax',
+          'barGross',
+          'clip',
+          'ticketRev',
+          'deposit',
+          'wages',
+          'surplus',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'date',
+          'title',
+          'type',
+          'format',
+          'pax',
+          'barGross',
+          'clip',
+          'ticketRev',
+          'deposit',
+          'wages',
+          'surplus',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.date is string
+        && data.date.size() >= 1
+        && data.date.size() <= 32
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 160
+        && data.type is string
+        && data.type.size() >= 5
+        && data.type.size() <= 16
+        && (data.type == 'owned' || data.type == 'promoter')
+        && data.format is string
+        && data.format.size() >= 1
+        && data.format.size() <= 80
+        && data.pax is number
+        && data.pax >= 0
+        && data.pax <= 1000
+        && data.barGross is number
+        && data.barGross >= 0
+        && data.barGross <= 500000
+        && data.clip is number
+        && data.clip >= 0
+        && data.clip <= 100000
+        && data.ticketRev is number
+        && data.ticketRev >= 0
+        && data.ticketRev <= 500000
+        && data.deposit is number
+        && data.deposit >= 0
+        && data.deposit <= 50000
+        && data.wages is number
+        && data.wages >= 0
+        && data.wages <= 100000
+        && data.surplus is number
+        && data.surplus >= -100000
+        && data.surplus <= 500000
+        && data.sortOrder is number
+        && data.sortOrder >= 0
+        && data.sortOrder <= 10000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint 3: RosterItemDoc
+    function isValidRosterItem(data) {
+      return data.keys().hasAll([
+          'ownerId',
+          'templateId',
+          'templateName',
+          'role',
+          'headcount',
+          'hours',
+          'rate',
+          'hasSuper',
+          'notes',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId',
+          'templateId',
+          'templateName',
+          'role',
+          'headcount',
+          'hours',
+          'rate',
+          'hasSuper',
+          'notes',
+          'sortOrder',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.templateId is string
+        && data.templateId.size() >= 1
+        && data.templateId.size() <= 64
+        && data.templateId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.templateName is string
+        && data.templateName.size() >= 1
+        && data.templateName.size() <= 120
+        && data.role is string
+        && data.role.size() >= 1
+        && data.role.size() <= 120
+        && data.headcount is number
+        && data.headcount >= 0
+        && data.headcount <= 50
+        && data.hours is number
+        && data.hours >= 0
+        && data.hours <= 24
+        && data.rate is number
+        && data.rate >= 0
+        && data.rate <= 500
+        && data.hasSuper is bool
+        && data.notes is string
+        && data.notes.size() <= 300
+        && data.sortOrder is number
+        && data.sortOrder >= 0
+        && data.sortOrder <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Collection 1: /workspaceConfigs/{configId}
+    match /workspaceConfigs/{configId} {
+      allow get: if isEmailVerified()
+        && isValidId(configId)
+        && configId == request.auth.uid
+        && existing().ownerId == request.auth.uid;
+
+      allow list: if isEmailVerified()
+        && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isEmailVerified()
+        && isValidId(configId)
+        && configId == request.auth.uid
+        && isValidWorkspaceConfig(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isEmailVerified()
+        && isValidId(configId)
+        && isValidWorkspaceConfig(incoming())
+        && configId == request.auth.uid
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update Workspace Links & Settings
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'workspaceTitle',
+            'linkedSheetUrl',
+            'linkedCalendarId',
+            'linkedDriveFolderId',
+            'wagesIncludeSuper',
+            'simTicketClip',
+            'dealClip',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isEmailVerified()
+        && isValidId(configId)
+        && configId == request.auth.uid
+        && existing().ownerId == request.auth.uid;
+    }
+
+    // Collection 2: /pipelineEvents/{eventId}
+    match /pipelineEvents/{eventId} {
+      allow get: if isEmailVerified()
+        && isValidId(eventId)
+        && existing().ownerId == request.auth.uid;
+
+      allow list: if isEmailVerified()
+        && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isEmailVerified()
+        && isValidId(eventId)
+        && isValidPipelineEvent(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isEmailVerified()
+        && isValidId(eventId)
+        && isValidPipelineEvent(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update Event Financial & Schedule Fields
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'date',
+            'title',
+            'type',
+            'format',
+            'pax',
+            'barGross',
+            'clip',
+            'ticketRev',
+            'deposit',
+            'wages',
+            'surplus',
+            'sortOrder',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isEmailVerified()
+        && isValidId(eventId)
+        && existing().ownerId == request.auth.uid;
+    }
+
+    // Collection 3: /rosterItems/{rosterItemId}
+    match /rosterItems/{rosterItemId} {
+      allow get: if isEmailVerified()
+        && isValidId(rosterItemId)
+        && existing().ownerId == request.auth.uid;
+
+      allow list: if isEmailVerified()
+        && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isEmailVerified()
+        && isValidId(rosterItemId)
+        && isValidRosterItem(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isEmailVerified()
+        && isValidId(rosterItemId)
+        && isValidRosterItem(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update Roster Shift Parameters
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'templateId',
+            'templateName',
+            'role',
+            'headcount',
+            'hours',
+            'rate',
+            'hasSuper',
+            'notes',
+            'sortOrder',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isEmailVerified()
+        && isValidId(rosterItemId)
+        && existing().ownerId == request.auth.uid;
+    }
+  }
+}

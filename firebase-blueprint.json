@@ -1,0 +1,271 @@
+{
+  "entities": {
+    "WorkspaceConfig": {
+      "title": "WorkspaceConfig",
+      "description": "Cloud-persisted Trough X Sydney workspace configuration and Google Workspace links owned by an authenticated user.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the workspace owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceTitle": {
+          "type": "string",
+          "description": "Display title of the Trough X budget workspace.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "linkedSheetUrl": {
+          "type": "string",
+          "description": "Connected Google Sheet URL or spreadsheet ID.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "linkedCalendarId": {
+          "type": "string",
+          "description": "Connected Google Calendar ID or URL.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "linkedDriveFolderId": {
+          "type": "string",
+          "description": "Connected Google Drive folder ID for Trough X exports and files.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "wagesIncludeSuper": {
+          "type": "boolean",
+          "description": "Whether 11.5% statutory superannuation is enabled on direct staff."
+        },
+        "simTicketClip": {
+          "type": "number",
+          "description": "Default venue ticket clip per head in the Budget Simulator (AUD)."
+        },
+        "dealClip": {
+          "type": "number",
+          "description": "Default venue ticket clip per head in the Promoter Deal Analyzer (AUD)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace config was first created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the workspace config was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "workspaceTitle",
+        "linkedSheetUrl",
+        "linkedCalendarId",
+        "linkedDriveFolderId",
+        "wagesIncludeSuper",
+        "simTicketClip",
+        "dealClip",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PipelineEventDoc": {
+      "title": "PipelineEventDoc",
+      "description": "Confirmed or pipeline Trough X Sydney event budget record persisted in Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the event owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "description": "Formatted event date (DD/MM/YYYY or TBC).",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "title": {
+          "type": "string",
+          "description": "Event title and promoter name.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "type": {
+          "type": "string",
+          "description": "Commercial model type.",
+          "enum": ["owned", "promoter"],
+          "minLength": 5,
+          "maxLength": 16
+        },
+        "format": {
+          "type": "string",
+          "description": "Operational format description.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "pax": {
+          "type": "number",
+          "description": "Target attendance (0 to 1000 Pax)."
+        },
+        "barGross": {
+          "type": "number",
+          "description": "Projected gross bar revenue in AUD."
+        },
+        "clip": {
+          "type": "number",
+          "description": "Retained promoter ticket clip revenue in AUD."
+        },
+        "ticketRev": {
+          "type": "number",
+          "description": "Owned event gross ticket revenue in AUD."
+        },
+        "deposit": {
+          "type": "number",
+          "description": "Promoter booking deposit in AUD."
+        },
+        "wages": {
+          "type": "number",
+          "description": "Rostered venue wages in AUD."
+        },
+        "surplus": {
+          "type": "number",
+          "description": "Net operating contribution surplus in AUD."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Display sort index in the schedule table."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "date",
+        "title",
+        "type",
+        "format",
+        "pax",
+        "barGross",
+        "clip",
+        "ticketRev",
+        "deposit",
+        "wages",
+        "surplus",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RosterItemDoc": {
+      "title": "RosterItemDoc",
+      "description": "Individual Flexibility Agreement (IFA) staffing roster role persisted in Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the roster owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "templateId": {
+          "type": "string",
+          "description": "Template identifier (e.g. active, baseline-200, or custom template ID).",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "templateName": {
+          "type": "string",
+          "description": "Human-readable roster template name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "description": "Staff role title.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "headcount": {
+          "type": "number",
+          "description": "Number of staff rostered for this role."
+        },
+        "hours": {
+          "type": "number",
+          "description": "Shift duration in hours."
+        },
+        "rate": {
+          "type": "number",
+          "description": "Loaded IFA hourly rate in AUD."
+        },
+        "hasSuper": {
+          "type": "boolean",
+          "description": "Whether statutory 11.5% superannuation applies."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Operational compliance and duty notes.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Row order index in the Wage Calculator table."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "templateId",
+        "templateName",
+        "role",
+        "headcount",
+        "hours",
+        "rate",
+        "hasSuper",
+        "notes",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/workspaceConfigs/{configId}": {
+      "schema": { "$ref": "#/entities/WorkspaceConfig" },
+      "description": "Stores per-user Trough X workspace settings and connected Google Sheet/Calendar/Drive references."
+    },
+    "/pipelineEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/PipelineEventDoc" },
+      "description": "Stores confirmed and pipeline event budgets owned by the authenticated user."
+    },
+    "/rosterItems/{rosterItemId}": {
+      "schema": { "$ref": "#/entities/RosterItemDoc" },
+      "description": "Stores active and template IFA staffing roster entries owned by the authenticated user."
+    }
+  }
+}

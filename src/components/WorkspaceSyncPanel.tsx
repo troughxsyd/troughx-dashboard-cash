@@ -14,9 +14,16 @@ import {
   buildEventsSheetRows,
   buildRosterSheetRows,
   buildSimulatorSheetRows,
+  listDriveFiles,
+  exportFileToDrive,
+  deleteDriveFile,
+  buildDriveCsvFromRows,
+  saveWorkspaceToFirestore,
+  loadWorkspaceFromFirestore,
   type AccessibleCalendarInfo,
   type InspectedEventLabelInfo,
   type SheetMetadata,
+  type DriveFileItem,
 } from '../services/googleWorkspace';
 
 export function GoogleSignInButton({
@@ -69,13 +76,17 @@ export function GoogleSignInButton({
 }
 
 interface PendingWriteAction {
-  type: 'write_tab' | 'create_master';
-  dataset: 'events' | 'roster' | 'simulator' | 'all_three';
+  type: 'write_tab' | 'create_master' | 'drive_export' | 'drive_delete';
+  dataset: 'events' | 'roster' | 'simulator' | 'all_three' | 'drive_file';
   title: string;
   description: string;
   targetSheetTitle?: string;
   targetTabName?: string;
   rowCount: number;
+  driveFileName?: string;
+  driveMimeType?: string;
+  driveContent?: string;
+  driveFileIdToDelete?: string;
 }
 
 interface WorkspaceSyncPanelProps {
@@ -86,6 +97,7 @@ interface WorkspaceSyncPanelProps {
   onUpdateEvents: (newEvents: PipelineEvent[], mode: 'replace' | 'merge') => void;
   onResetDefaultEvents: () => void;
   roster: RosterItem[];
+  onUpdateRoster?: (newRoster: RosterItem[], includeSuper?: boolean) => void;
   wagesIncludeSuper: boolean;
   simulatorSnapshot: Record<string, string | number>;
 }
@@ -98,6 +110,7 @@ export function WorkspaceSyncPanel({
   onUpdateEvents,
   onResetDefaultEvents,
   roster,
+  onUpdateRoster,
   wagesIncludeSuper,
   simulatorSnapshot,
 }: WorkspaceSyncPanelProps) {
@@ -133,7 +146,24 @@ export function WorkspaceSyncPanel({
     text: string;
   } | null>(null);
 
-  // Confirmation Modal State (Required before mutating/creating Google Sheets data)
+  // Google Drive State
+  const [driveFiles, setDriveFiles] = useState<DriveFileItem[]>([]);
+  const [driveFilter, setDriveFilter] = useState<'all' | 'spreadsheets' | 'folders' | 'trough'>(
+    'trough'
+  );
+  const [driveSearch, setDriveSearch] = useState<string>('');
+  const [driveFolderId, setDriveFolderId] = useState<string>('');
+  const [isDriveBusy, setIsDriveBusy] = useState<boolean>(false);
+  const [driveStatusMsg, setDriveStatusMsg] = useState<{
+    type: 'success' | 'info' | 'error';
+    text: string;
+  } | null>(null);
+
+  // Firebase Cloud Sync State
+  const [isCloudBusy, setIsCloudBusy] = useState<boolean>(false);
+  const [cloudStatusMsg, setCloudStatusMsg] = useState<string | null>(null);
+
+  // Confirmation Modal State (Required before mutating/creating Google Sheets or Google Drive data)
   const [pendingWrite, setPendingWrite] = useState<PendingWriteAction | null>(null);
 
   const decodedCalendarId = extractCalendarId(calendarInput);
@@ -322,10 +352,206 @@ export function WorkspaceSyncPanel({
     });
   };
 
+  const handleBrowseDrive = async (
+    overrideFilter?: 'all' | 'spreadsheets' | 'folders' | 'trough'
+  ) => {
+    setIsDriveBusy(true);
+    setDriveStatusMsg(null);
+    const activeFilter = overrideFilter ?? driveFilter;
+    try {
+      const files = await listDriveFiles(activeFilter, driveSearch);
+      setDriveFiles(files);
+      setDriveStatusMsg({
+        type: 'info',
+        text: `Loaded ${files.length} file(s) from Google Drive.`,
+      });
+    } catch (err: any) {
+      setDriveStatusMsg({
+        type: 'error',
+        text: err?.message || 'Failed to browse Google Drive files.',
+      });
+    } finally {
+      setIsDriveBusy(false);
+    }
+  };
+
+  const requestDriveExport = (
+    exportType: 'events_csv' | 'roster_csv' | 'simulator_csv' | 'full_json'
+  ) => {
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    let fileName = `Trough_X_Sydney_Export_${dateStamp}.csv`;
+    let mimeType = 'text/csv';
+    let content = '';
+    let rowCount = 0;
+
+    if (exportType === 'events_csv') {
+      const rows = buildEventsSheetRows(events);
+      content = buildDriveCsvFromRows(rows);
+      fileName = `Trough_X_Confirmed_Events_${dateStamp}.csv`;
+      rowCount = rows.length;
+    } else if (exportType === 'roster_csv') {
+      const rows = buildRosterSheetRows(roster, wagesIncludeSuper);
+      content = buildDriveCsvFromRows(rows);
+      fileName = `Trough_X_IFA_Wage_Roster_${dateStamp}.csv`;
+      rowCount = rows.length;
+    } else if (exportType === 'simulator_csv') {
+      const rows = buildSimulatorSheetRows(simulatorSnapshot);
+      content = buildDriveCsvFromRows(rows);
+      fileName = `Trough_X_ProForma_Budget_${dateStamp}.csv`;
+      rowCount = rows.length;
+    } else {
+      content = JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          venue: 'Trough X Sydney (273 Crown St, Surry Hills)',
+          wagesIncludeSuper,
+          roster,
+          events,
+          simulatorSnapshot,
+        },
+        null,
+        2
+      );
+      mimeType = 'application/json';
+      fileName = `Trough_X_Full_Backup_${dateStamp}.json`;
+      rowCount = events.length + roster.length;
+    }
+
+    setPendingWrite({
+      type: 'drive_export',
+      dataset: 'drive_file',
+      title: 'Confirm Google Drive File Upload',
+      description: `You are about to create and upload "${fileName}" to your Google Drive.`,
+      targetSheetTitle: fileName,
+      targetTabName: driveFolderId.trim()
+        ? `Drive Folder (${driveFolderId.trim()})`
+        : 'My Drive (Root)',
+      rowCount,
+      driveFileName: fileName,
+      driveMimeType: mimeType,
+      driveContent: content,
+    });
+  };
+
+  const requestDriveDelete = (file: DriveFileItem) => {
+    setPendingWrite({
+      type: 'drive_delete',
+      dataset: 'drive_file',
+      title: 'Confirm Google Drive File Deletion',
+      description: `Are you sure you want to permanently delete "${file.name}" from your Google Drive? This action cannot be undone.`,
+      targetSheetTitle: file.name,
+      targetTabName: file.mimeType,
+      rowCount: 1,
+      driveFileIdToDelete: file.id,
+      driveFileName: file.name,
+    });
+  };
+
+  const handleSaveCloudWorkspace = async () => {
+    setIsCloudBusy(true);
+    setCloudStatusMsg(null);
+    try {
+      const res = await saveWorkspaceToFirestore({
+        workspaceTitle: 'Trough X Sydney Operating Model v3.2',
+        linkedSheetUrl: sheetInput,
+        linkedCalendarId: decodedCalendarId,
+        linkedDriveFolderId: driveFolderId,
+        wagesIncludeSuper,
+        simTicketClip: Number(simulatorSnapshot['Average Ticket Yield / Clip (AUD)']) || 5,
+        dealClip: 5,
+        events,
+        roster,
+      });
+      setCloudStatusMsg(
+        `Saved ${res.eventsSaved} events & ${res.rosterSaved} IFA roles to Firebase Cloud`
+      );
+    } catch (err: any) {
+      setCloudStatusMsg('Firebase Cloud sync error — check sign-in status');
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
+  const handleLoadCloudWorkspace = async () => {
+    setIsCloudBusy(true);
+    setCloudStatusMsg(null);
+    try {
+      const loaded = await loadWorkspaceFromFirestore();
+      if (!loaded) {
+        setCloudStatusMsg('No saved cloud snapshot found for this account yet');
+      } else {
+        if (loaded.events && loaded.events.length > 0) {
+          onUpdateEvents(loaded.events, 'replace');
+        }
+        if (loaded.roster && loaded.roster.length > 0 && onUpdateRoster) {
+          onUpdateRoster(loaded.roster, loaded.wagesIncludeSuper);
+        }
+        if (loaded.linkedSheetUrl) setSheetInput(loaded.linkedSheetUrl);
+        if (loaded.linkedCalendarId) setCalendarInput(loaded.linkedCalendarId);
+        if (loaded.linkedDriveFolderId) setDriveFolderId(loaded.linkedDriveFolderId);
+        setCloudStatusMsg('Restored events & IFA roster from Firebase Cloud');
+      }
+    } catch (err: any) {
+      setCloudStatusMsg('Failed to load from Firebase Cloud');
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
   const executeConfirmedWrite = async () => {
     if (!pendingWrite) return;
     const action = pendingWrite;
     setPendingWrite(null);
+
+    if (action.type === 'drive_export' && action.driveFileName && action.driveContent) {
+      setIsDriveBusy(true);
+      setDriveStatusMsg(null);
+      try {
+        const created = await exportFileToDrive(
+          action.driveFileName,
+          action.driveContent,
+          action.driveMimeType || 'text/csv',
+          driveFolderId
+        );
+        setDriveFiles((prev) => [created, ...prev]);
+        setDriveStatusMsg({
+          type: 'success',
+          text: `Saved "${created.name}" to your Google Drive.`,
+        });
+      } catch (err: any) {
+        setDriveStatusMsg({
+          type: 'error',
+          text: err?.message || 'Failed to upload file to Google Drive.',
+        });
+      } finally {
+        setIsDriveBusy(false);
+      }
+      return;
+    }
+
+    if (action.type === 'drive_delete' && action.driveFileIdToDelete) {
+      setIsDriveBusy(true);
+      setDriveStatusMsg(null);
+      try {
+        await deleteDriveFile(action.driveFileIdToDelete);
+        setDriveFiles((prev) =>
+          prev.filter((f) => f.id !== action.driveFileIdToDelete)
+        );
+        setDriveStatusMsg({
+          type: 'success',
+          text: `Deleted "${action.driveFileName}" from Google Drive.`,
+        });
+      } catch (err: any) {
+        setDriveStatusMsg({
+          type: 'error',
+          text: err?.message || 'Failed to delete file from Google Drive.',
+        });
+      } finally {
+        setIsDriveBusy(false);
+      }
+      return;
+    }
+
     setIsSheetBusy(true);
     setSheetStatusMsg(null);
 
@@ -386,7 +612,7 @@ export function WorkspaceSyncPanel({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-sm text-white">
-                Google Workspace Live Integration (Calendar &amp; Sheets)
+                Google Workspace (Drive, Sheets &amp; Calendar) + Firebase Cloud
               </h3>
               {user ? (
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono flex items-center gap-1">
@@ -398,17 +624,46 @@ export function WorkspaceSyncPanel({
                   Sign-In Required for Live Sync
                 </span>
               )}
+              {cloudStatusMsg && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-trough-yellow/15 text-trough-yellow border border-trough-yellow/30 font-mono">
+                  {cloudStatusMsg}
+                </span>
+              )}
             </div>
             <p className="text-xs text-trough-muted mt-0.5">
-              Inspect calendar event labels on{' '}
-              <span className="text-slate-300 font-mono">{DEFAULT_CALENDAR_ID}</span>, pull{' '}
-              <code className="text-trough-yellow">confirmed</code> events, and sync with Google
-              Sheets.
+              Inspect calendar labels on{' '}
+              <span className="text-slate-300 font-mono">{DEFAULT_CALENDAR_ID}</span>, sync Google
+              Sheets, manage Google Drive files, and persist to Firebase Firestore.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          {user && (
+            <>
+              <button
+                type="button"
+                onClick={handleSaveCloudWorkspace}
+                disabled={isCloudBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                title="Save Events, IFA Roster & Settings to Firebase Firestore"
+              >
+                <i className="fa-solid fa-database"></i>
+                <span>{isCloudBusy ? 'Syncing Cloud...' : 'Save to Firebase'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadCloudWorkspace}
+                disabled={isCloudBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                title="Restore saved Events & IFA Roster from Firebase Firestore"
+              >
+                <i className="fa-solid fa-cloud-arrow-down text-trough-yellow"></i>
+                <span>Load Firebase</span>
+              </button>
+            </>
+          )}
+
           <button
             type="button"
             onClick={() => handlePullCalendarEvents(filterMode, true)}
@@ -832,6 +1087,236 @@ export function WorkspaceSyncPanel({
         </div>
       </div>
 
+      {/* 3. GOOGLE DRIVE FILE BROWSER & REPORT EXPORTER */}
+      <div className="bg-[#151621] border border-slate-800 rounded-xl p-4 space-y-3.5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div>
+            <span className="text-xs font-bold text-white flex items-center gap-2">
+              <i className="fa-brands fa-google-drive text-trough-yellow"></i>
+              3. Google Drive Repository &amp; Budget Report Exporter
+            </span>
+            <p className="text-[11px] text-trough-muted mt-0.5">
+              Browse spreadsheets and files in your Google Drive, connect any Google Sheet in one
+              click, or export Trough X reports directly to Drive.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => requestDriveExport('events_csv')}
+              disabled={isDriveBusy}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-trough-yellow hover:bg-trough-yellowHover text-black transition cursor-pointer flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-file-csv"></i>
+              <span>Save Events CSV to Drive</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => requestDriveExport('roster_csv')}
+              disabled={isDriveBusy}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-users-gear text-trough-yellow"></i>
+              <span>Save IFA Roster CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => requestDriveExport('simulator_csv')}
+              disabled={isDriveBusy}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-sliders text-emerald-400"></i>
+              <span>Save Pro-Forma CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => requestDriveExport('full_json')}
+              disabled={isDriveBusy}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-file-code text-blue-400"></i>
+              <span>Backup JSON to Drive</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Drive Search & Filter Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+          <div className="md:col-span-5 flex gap-2">
+            <input
+              type="text"
+              value={driveSearch}
+              onChange={(e) => setDriveSearch(e.target.value)}
+              placeholder="Search Google Drive files by name..."
+              className="flex-1 bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+            />
+            <select
+              value={driveFilter}
+              onChange={(e) => {
+                const next = e.target.value as 'all' | 'spreadsheets' | 'folders' | 'trough';
+                setDriveFilter(next);
+                handleBrowseDrive(next);
+              }}
+              className="bg-[#10111A] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-trough-yellow focus:outline-none"
+            >
+              <option value="trough">Trough X Files</option>
+              <option value="spreadsheets">Google Sheets</option>
+              <option value="folders">Drive Folders</option>
+              <option value="all">All Recent Files</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-4">
+            <input
+              type="text"
+              value={driveFolderId}
+              onChange={(e) => setDriveFolderId(e.target.value)}
+              placeholder="Optional target Drive Folder ID for exports"
+              className="w-full bg-[#10111A] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:border-trough-yellow focus:outline-none"
+            />
+          </div>
+
+          <div className="md:col-span-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => handleBrowseDrive()}
+              disabled={isDriveBusy}
+              className="w-full md:w-auto px-3.5 py-1.5 rounded-lg text-xs font-bold bg-trough-steelGrey hover:bg-trough-steelSlate text-white border border-slate-600 transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <i
+                className={`fa-solid ${
+                  isDriveBusy ? 'fa-spinner fa-spin' : 'fa-folder-open text-trough-yellow'
+                }`}
+              ></i>
+              <span>{isDriveBusy ? 'Loading Drive...' : 'Browse Google Drive'}</span>
+            </button>
+          </div>
+        </div>
+
+        {driveStatusMsg && (
+          <div
+            className={`p-2.5 rounded-lg text-xs border flex items-center justify-between ${
+              driveStatusMsg.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : driveStatusMsg.type === 'error'
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                : 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+            }`}
+          >
+            <span>{driveStatusMsg.text}</span>
+            {driveFiles.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDriveFiles([])}
+                className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+              >
+                Hide List
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Drive Files Table */}
+        {driveFiles.length > 0 && (
+          <div className="overflow-x-auto max-h-60 border border-slate-800 rounded-lg">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#10111A] text-slate-400 uppercase text-[10px] sticky top-0 border-b border-slate-800">
+                <tr>
+                  <th className="py-2 px-3">File Name</th>
+                  <th className="py-2 px-3">Type</th>
+                  <th className="py-2 px-3">Modified</th>
+                  <th className="py-2 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 text-slate-200">
+                {driveFiles.map((file) => {
+                  const isSheet =
+                    file.mimeType === 'application/vnd.google-apps.spreadsheet';
+                  const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
+                  return (
+                    <tr key={file.id} className="hover:bg-slate-800/40">
+                      <td className="py-2 px-3 font-medium text-white flex items-center gap-2">
+                        <i
+                          className={`fa-solid ${
+                            isSheet
+                              ? 'fa-file-excel text-emerald-400'
+                              : isFolder
+                              ? 'fa-folder text-trough-yellow'
+                              : 'fa-file-lines text-slate-400'
+                          }`}
+                        ></i>
+                        <span className="truncate max-w-xs">{file.name}</span>
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-slate-400">
+                        {isSheet
+                          ? 'Google Sheet'
+                          : isFolder
+                          ? 'Folder'
+                          : file.mimeType.replace('application/', '')}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-slate-400">
+                        {file.modifiedTime
+                          ? new Date(file.modifiedTime).toLocaleDateString('en-AU')
+                          : '—'}
+                      </td>
+                      <td className="py-2 px-3 text-right space-x-1.5 whitespace-nowrap">
+                        {isSheet && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSheetInput(file.id);
+                              fetchSpreadsheetMetadata(file.id)
+                                .then((meta) => {
+                                  setConnectedSheet(meta);
+                                  if (meta.sheets.length > 0) {
+                                    setSelectedTab(meta.sheets[0].title);
+                                  }
+                                })
+                                .catch(() => {});
+                            }}
+                            className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold cursor-pointer"
+                          >
+                            Link Sheet
+                          </button>
+                        )}
+                        {isFolder && (
+                          <button
+                            type="button"
+                            onClick={() => setDriveFolderId(file.id)}
+                            className="px-2 py-0.5 rounded bg-trough-yellow/20 hover:bg-trough-yellow/30 text-trough-yellow border border-trough-yellow/30 text-[10px] font-semibold cursor-pointer"
+                          >
+                            Use Folder
+                          </button>
+                        )}
+                        {file.webViewLink && (
+                          <a
+                            href={file.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] inline-block"
+                          >
+                            Open
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => requestDriveDelete(file)}
+                          className="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-[10px] cursor-pointer"
+                          title="Delete from Google Drive (requires confirmation)"
+                        >
+                          <i className="fa-solid fa-trash-can"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* =====================================================================
           CALENDAR EVENT LABELS INSPECTOR DRAWER
           Displays all discovered labels, color tags, statuses, and raw events
@@ -1032,7 +1517,7 @@ export function WorkspaceSyncPanel({
                 <div>
                   <h4 className="font-bold text-sm text-white">{pendingWrite.title}</h4>
                   <span className="text-[11px] text-trough-muted">
-                    Explicit permission required before modifying Google Sheets
+                    Explicit permission required before modifying Google Workspace data
                   </span>
                 </div>
               </div>
@@ -1044,18 +1529,18 @@ export function WorkspaceSyncPanel({
 
             <div className="bg-[#151621] p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs font-mono">
               <div className="flex justify-between">
-                <span className="text-slate-400">Spreadsheet:</span>
+                <span className="text-slate-400">Target File / Sheet:</span>
                 <span className="text-white font-semibold truncate max-w-[220px]">
                   {pendingWrite.targetSheetTitle}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Target Tab(s):</span>
+                <span className="text-slate-400">Destination / Type:</span>
                 <span className="text-trough-yellow">{pendingWrite.targetTabName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Rows to Write:</span>
-                <span className="text-emerald-400">{pendingWrite.rowCount} rows</span>
+                <span className="text-slate-400">Records Affected:</span>
+                <span className="text-emerald-400">{pendingWrite.rowCount} item(s)</span>
               </div>
             </div>
 
@@ -1070,10 +1555,24 @@ export function WorkspaceSyncPanel({
               <button
                 type="button"
                 onClick={executeConfirmedWrite}
-                className="px-4 py-2 rounded-lg text-xs font-bold bg-trough-yellow hover:bg-trough-yellowHover text-black transition cursor-pointer flex items-center gap-1.5"
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  pendingWrite.type === 'drive_delete'
+                    ? 'bg-rose-500 hover:bg-rose-400 text-white'
+                    : 'bg-trough-yellow hover:bg-trough-yellowHover text-black'
+                }`}
               >
-                <i className="fa-solid fa-check"></i>
-                <span>Confirm &amp; Write to Google Sheets</span>
+                <i
+                  className={`fa-solid ${
+                    pendingWrite.type === 'drive_delete' ? 'fa-trash-can' : 'fa-check'
+                  }`}
+                ></i>
+                <span>
+                  {pendingWrite.type === 'drive_delete'
+                    ? 'Confirm Delete from Drive'
+                    : pendingWrite.type === 'drive_export'
+                    ? 'Confirm Upload to Drive'
+                    : 'Confirm & Write to Google Sheets'}
+                </span>
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@
   "appId": "1:542733507227:web:69430e067d81472085443e",
   "apiKey": "AIzaSyBUX4MpYNb23ebjuypNueuEcstldhVclro",
   "authDomain": "gen-lang-client-0877259430.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-eventflowbudget-c616d906-9924-4948-99dc-4b33c99f8fb4",
   "storageBucket": "gen-lang-client-0877259430.firebasestorage.app",
   "messagingSenderId": "542733507227",
   "measurementId": "",
