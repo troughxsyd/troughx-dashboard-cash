@@ -19,6 +19,7 @@ import {
   WorkspaceSyncPanel,
   GoogleSignInButton,
 } from './components/WorkspaceSyncPanel';
+import { VenueProgrammingCalendar } from './components/VenueProgrammingCalendar';
 
 export interface RosterItem {
   role: string;
@@ -279,7 +280,13 @@ const EVENTS_DATA: PipelineEvent[] = [
   },
 ];
 
-type TabId = 'dashboard' | 'simulator' | 'wages' | 'promoter' | 'calendar';
+type TabId =
+  | 'programming'
+  | 'dashboard'
+  | 'simulator'
+  | 'wages'
+  | 'promoter'
+  | 'calendar';
 type SimMode = 'owned' | 'promoter' | 'fixed_hire';
 
 function formatMoney(val: number): string {
@@ -290,7 +297,7 @@ function formatMoney(val: number): string {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>('programming');
 
   // Simulator State
   const [simMode, setSimMode] = useState<SimMode>('owned');
@@ -897,7 +904,11 @@ export default function App() {
   };
 
   // Load a Forthcoming Event into the Budget Simulator for editing & saving
-  const loadEventIntoSimulator = (item: PipelineEvent, indexInEvents: number) => {
+  const loadEventIntoSimulator = (
+    item: PipelineEvent,
+    indexInEvents: number,
+    stayOnCurrentTab = false
+  ) => {
     setEditingEventIndex(indexInEvents);
     setSimEventDate(item.date);
     setSimEventTitle(item.title);
@@ -934,7 +945,39 @@ export default function App() {
     }
     setSimPromoterDeposit(item.deposit > 0);
     setSimSaveNotice(null);
-    setActiveTab('simulator');
+    if (!stayOnCurrentTab) {
+      setActiveTab('simulator');
+    }
+  };
+
+  const startNewEventOnCalendarDate = (dateStr: string) => {
+    setEditingEventIndex(null);
+    setSimEventDate(dateStr);
+    setSimEventTitle('New Trough X Event');
+    setSimEventFormat(
+      simMode === 'fixed_hire'
+        ? 'Fixed Venue Hire'
+        : simMode === 'promoter'
+        ? 'Promoter Hosted'
+        : 'Owned Hero Night'
+    );
+    setSimSaveNotice(null);
+  };
+
+  const handleMoveEventDate = (indexInEvents: number, newDateStr: string) => {
+    const target = events[indexInEvents];
+    if (!target || target.date === newDateStr) return;
+    const next = events.map((ev, idx) =>
+      idx === indexInEvents ? { ...ev, date: newDateStr } : ev
+    );
+    persistEventsToStorage(
+      next,
+      `Moved "${target.title}" to ${newDateStr}`
+    );
+    if (editingEventIndex === indexInEvents) {
+      setSimEventDate(newDateStr);
+    }
+    setSimSaveNotice(`Moved "${target.title}" to ${newDateStr}.`);
   };
 
   const startNewEventInSimulator = () => {
@@ -1664,7 +1707,17 @@ export default function App() {
 
         {/* TAB NAVIGATION BAR */}
         <div className="border-t border-trough-cardBorder bg-[#1C1C1C]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-3 overflow-x-auto py-1.5 text-xs font-medium scrollbar-none">
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-2.5 overflow-x-auto py-1.5 text-xs font-medium scrollbar-none">
+            <button
+              onClick={() => setActiveTab('programming')}
+              className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
+                activeTab === 'programming'
+                  ? 'text-black bg-trough-yellow font-semibold shadow-sm'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
+              }`}
+            >
+              <i className="fa-solid fa-calendar-check"></i> Programming Calendar (3/4 Split)
+            </button>
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
@@ -1713,14 +1766,67 @@ export default function App() {
                   : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
               }`}
             >
-              <i className="fa-solid fa-calendar-days"></i> Forthcoming Events
+              <i className="fa-solid fa-calendar-days"></i> Forthcoming Events &amp; Sync
             </button>
           </div>
         </div>
       </header>
 
       {/* MAIN VIEWPORT */}
-      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main
+        className={`flex-grow w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 ${
+          activeTab === 'programming' ? 'max-w-[1600px]' : 'max-w-7xl'
+        }`}
+      >
+        {/* ================= TAB 0: INTERACTIVE VENUE PROGRAMMING CALENDAR (3/4 CALENDAR + 1/4 SIMULATOR) ================= */}
+        {activeTab === 'programming' && (
+          <VenueProgrammingCalendar
+            events={events}
+            editingEventIndex={editingEventIndex}
+            simEventDate={simEventDate}
+            setSimEventDate={setSimEventDate}
+            simEventTitle={simEventTitle}
+            setSimEventTitle={setSimEventTitle}
+            simEventFormat={simEventFormat}
+            setSimEventFormat={setSimEventFormat}
+            simMode={simMode}
+            setSimMode={setSimMode}
+            simPax={simPax}
+            setSimPax={setSimPax}
+            simTicketPrice={simTicketPrice}
+            setSimTicketPrice={setSimTicketPrice}
+            simTicketClip={simTicketClip}
+            setSimTicketClip={setSimTicketClip}
+            simBarSpend={simBarSpend}
+            setSimBarSpend={setSimBarSpend}
+            simCloakRate={simCloakRate}
+            setSimCloakRate={setSimCloakRate}
+            simCogsRate={simCogsRate}
+            setSimCogsRate={setSimCogsRate}
+            simPromoterDeposit={simPromoterDeposit}
+            setSimPromoterDeposit={setSimPromoterDeposit}
+            simFixedHireFee={simFixedHireFee}
+            updateFixedHireFee={updateFixedHireFee}
+            ownedOverheads={ownedOverheads}
+            updateOwnedOverhead={updateOwnedOverhead}
+            resetOwnedOverheads={resetOwnedOverheads}
+            simMetrics={simMetrics}
+            onSelectEventForEdit={(ev, idx) => loadEventIntoSimulator(ev, idx, true)}
+            onStartNewEventOnDate={startNewEventOnCalendarDate}
+            onSaveToExistingEvent={handleSaveSimulatorToExistingEvent}
+            onSaveAsNewEvent={handleSaveSimulatorAsNewEvent}
+            onDeleteEvent={handleDeleteEvent}
+            onMoveEventDate={handleMoveEventDate}
+            simSaveNotice={simSaveNotice}
+            cloudSyncState={cloudSyncState}
+            cloudSyncMessage={cloudSyncMessage}
+            isSignedIn={Boolean(auth.currentUser)}
+            userEmail={auth.currentUser?.email || user?.email}
+            onSignIn={handleSignIn}
+            onManualCloudRefresh={handleManualCloudRefresh}
+            onForcePushToCloud={handleForcePushEventsToCloud}
+          />
+        )}
         {/* ================= TAB 1: EXECUTIVE DASHBOARD ================= */}
         {activeTab === 'dashboard' && (
           <section className="space-y-6">
