@@ -1529,9 +1529,9 @@ export const VenueProgrammingCalendar: React.FC<VenueProgrammingCalendarProps> =
                       </div>
                       <input
                         type="range"
-                        min="15"
-                        max="35"
-                        step="0.5"
+                        min="10"
+                        max="45"
+                        step="0.1"
                         value={simCogsRate}
                         onChange={(e) => setSimCogsRate(parseFloat(e.target.value))}
                         className="w-full h-1 bg-neutral-800 rounded-lg cursor-pointer mt-1 block"

@@ -20,6 +20,12 @@ import {
   GoogleSignInButton,
 } from './components/WorkspaceSyncPanel';
 import { VenueProgrammingCalendar } from './components/VenueProgrammingCalendar';
+import { AlcoholInventoryCogs } from './components/AlcoholInventoryCogs';
+import {
+  InventoryItem,
+  StockPurchaseEntry,
+  getInitialInventoryItems,
+} from './data/cloverInventorySeed';
 
 export interface RosterItem {
   role: string;
@@ -68,6 +74,11 @@ const STORAGE_KEYS = {
   ROSTER_TEMPLATES: 'trough_x_roster_templates_v4',
   DIRECT_OVERHEADS: 'trough_x_direct_overheads_v1',
   FIXED_HIRE_FEE: 'trough_x_fixed_hire_fee_v1',
+  COGS_RATE: 'trough_x_cogs_rate_v1',
+  INVENTORY: 'trough_x_clover_inventory_v1',
+  INVENTORY_PURCHASES: 'trough_x_inventory_purchases_v1',
+  INVENTORY_OPENING_VALUE: 'trough_x_inventory_opening_v1',
+  INVENTORY_PERIOD_SALES: 'trough_x_inventory_period_sales_v1',
 };
 
 const DEFAULT_OWNED_OVERHEADS: OwnedDirectOverheads = {
@@ -286,6 +297,7 @@ type TabId =
   | 'simulator'
   | 'wages'
   | 'promoter'
+  | 'inventory'
   | 'calendar';
 type SimMode = 'owned' | 'promoter' | 'fixed_hire';
 
@@ -306,7 +318,29 @@ export default function App() {
   const [simTicketClip, setSimTicketClip] = useState<number>(5.0);
   const [simBarSpend, setSimBarSpend] = useState<number>(22.5);
   const [simCloakRate, setSimCloakRate] = useState<number>(50);
-  const [simCogsRate, setSimCogsRate] = useState<number>(22.0);
+  const [simCogsRate, setSimCogsRateState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.COGS_RATE);
+      if (saved !== null) {
+        const parsed = Number(JSON.parse(saved));
+        if (!Number.isNaN(parsed) && parsed >= 5 && parsed <= 80) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return 22.0;
+  });
+
+  const setSimCogsRate = (val: number) => {
+    const clean = Number(Math.min(80, Math.max(5, Number.isNaN(val) ? 22.0 : val)).toFixed(1));
+    setSimCogsRateState(clean);
+    try {
+      localStorage.setItem(STORAGE_KEYS.COGS_RATE, JSON.stringify(clean));
+    } catch {
+      // Ignore
+    }
+  };
+
   const [simPromoterDeposit, setSimPromoterDeposit] = useState<boolean>(true);
   const [simFixedHireFee, setSimFixedHireFee] = useState<number>(() => {
     try {
@@ -329,6 +363,115 @@ export default function App() {
     } catch {
       // Ignore
     }
+  };
+
+  // Alcohol Inventory & Running COGS State (Persisted to localStorage)
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.INVENTORY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // Fallback to seeded Clover CSV rows
+    }
+    return getInitialInventoryItems();
+  });
+
+  const [inventoryPurchases, setInventoryPurchases] = useState<StockPurchaseEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.INVENTORY_PURCHASES);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return [];
+  });
+
+  const [inventoryOpeningValue, setInventoryOpeningValue] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.INVENTORY_OPENING_VALUE);
+      if (saved !== null) {
+        const parsed = Number(JSON.parse(saved));
+        if (!Number.isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return 3850;
+  });
+
+  const [inventoryPeriodSales, setInventoryPeriodSales] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.INVENTORY_PERIOD_SALES);
+      if (saved !== null) {
+        const parsed = Number(JSON.parse(saved));
+        if (!Number.isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return 10000;
+  });
+
+  const handleUpdateInventoryItems = (next: InventoryItem[], _notice?: string) => {
+    setInventoryItems(next);
+    try {
+      localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(next));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleResetInventoryDefaults = () => {
+    const defaults = getInitialInventoryItems();
+    setInventoryItems(defaults);
+    try {
+      localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(defaults));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleUpdateInventoryPurchases = (next: StockPurchaseEntry[]) => {
+    setInventoryPurchases(next);
+    try {
+      localStorage.setItem(STORAGE_KEYS.INVENTORY_PURCHASES, JSON.stringify(next));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleUpdateInventoryOpeningValue = (val: number) => {
+    const clean = Math.max(0, Number.isNaN(val) ? 0 : val);
+    setInventoryOpeningValue(clean);
+    try {
+      localStorage.setItem(STORAGE_KEYS.INVENTORY_OPENING_VALUE, JSON.stringify(clean));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleUpdateInventoryPeriodSales = (val: number) => {
+    const clean = Math.max(0, Number.isNaN(val) ? 0 : val);
+    setInventoryPeriodSales(clean);
+    try {
+      localStorage.setItem(STORAGE_KEYS.INVENTORY_PERIOD_SALES, JSON.stringify(clean));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleApplyCogsToSimulator = (cogsPct: number, sourceLabel: string) => {
+    const clamped = Number(Math.min(45, Math.max(10, cogsPct)).toFixed(1));
+    setSimCogsRate(clamped);
+    setSimSaveNotice(
+      `Applied ${clamped.toFixed(1)}% Beverage COGS (${sourceLabel}) to Budget Simulator & Programming Calendar.`
+    );
   };
 
   // Editable Direct Overheads for Trough-Owned Events (Loaded from localStorage)
@@ -459,6 +602,7 @@ export default function App() {
 
   // Calendar Filter & Dynamic Events State (Loaded from localStorage if saved)
   const [eventFilter, setEventFilter] = useState<'all' | 'owned' | 'promoter'>('all');
+  const [eventSearchQuery, setEventSearchQuery] = useState<string>('');
   const [events, setEvents] = useState<PipelineEvent[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
@@ -1587,14 +1731,16 @@ export default function App() {
 
   // Filtered Pipeline Events preserving original index in `events`
   const filteredEventsWithIndex = useMemo(() => {
+    const query = eventSearchQuery.trim().toLowerCase();
     return events
       .map((item, originalIndex) => ({ item, originalIndex }))
       .filter(({ item }) => {
-        if (eventFilter === 'owned') return item.type === 'owned';
-        if (eventFilter === 'promoter') return item.type === 'promoter';
+        if (eventFilter === 'owned' && item.type !== 'owned') return false;
+        if (eventFilter === 'promoter' && item.type !== 'promoter') return false;
+        if (query && !item.title.toLowerCase().includes(query)) return false;
         return true;
       });
-  }, [eventFilter, events]);
+  }, [eventFilter, eventSearchQuery, events]);
 
   const calendarTotals = useMemo(() => {
     let totalGross = 0;
@@ -1757,6 +1903,16 @@ export default function App() {
               }`}
             >
               <i className="fa-solid fa-handshake-simple"></i> Promoter Deal Analyzer
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer whitespace-nowrap ${
+                activeTab === 'inventory'
+                  ? 'text-black bg-trough-yellow font-semibold shadow-sm'
+                  : 'text-neutral-300 hover:text-white hover:bg-neutral-800'
+              }`}
+            >
+              <i className="fa-solid fa-wine-bottle"></i> Alcohol Inventory &amp; COGS
             </button>
             <button
               onClick={() => setActiveTab('calendar')}
@@ -3014,9 +3170,9 @@ export default function App() {
                         </div>
                         <input
                           type="range"
-                          min="16"
-                          max="30"
-                          step="0.5"
+                          min="10"
+                          max="45"
+                          step="0.1"
                           value={simCogsRate}
                           onChange={(e) => setSimCogsRate(parseFloat(e.target.value))}
                           className="w-full h-2 bg-neutral-800 rounded-lg cursor-pointer block"
@@ -4231,6 +4387,29 @@ export default function App() {
                     <span>Save Schedule</span>
                   </button>
 
+                  <div className="relative flex-1 sm:flex-initial">
+                    <i className="fa-solid fa-magnifying-glass text-neutral-500 text-[11px] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    <input
+                      type="text"
+                      value={eventSearchQuery}
+                      onChange={(e) => setEventSearchQuery(e.target.value)}
+                      placeholder="Filter by event title..."
+                      aria-label="Filter Forthcoming Events by title"
+                      className="w-full sm:w-52 h-8 bg-[#1E1E1E] border border-neutral-700 rounded-lg pl-7 pr-7 text-xs text-white placeholder:text-neutral-500 focus:border-trough-yellow focus:outline-none"
+                    />
+                    {eventSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setEventSearchQuery('')}
+                        aria-label="Clear title search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs cursor-pointer"
+                        title="Clear search"
+                      >
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    )}
+                  </div>
+
                   <span className="text-xs text-neutral-500 pl-1">Filter:</span>
                   <button
                     onClick={() => setEventFilter('all')}
@@ -4488,6 +4667,35 @@ export default function App() {
                         </tr>
                       );
                     })}
+                    {filteredEventsWithIndex.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-8 px-4 text-center text-neutral-400">
+                          <div className="space-y-2">
+                            <p className="text-xs">
+                              No forthcoming events match{' '}
+                              {eventSearchQuery.trim() ? (
+                                <span className="text-white font-semibold">
+                                  &ldquo;{eventSearchQuery.trim()}&rdquo;
+                                </span>
+                              ) : (
+                                'the active filter'
+                              )}
+                              .
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEventSearchQuery('');
+                                setEventFilter('all');
+                              }}
+                              className="px-3 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-trough-yellow text-xs font-medium border border-neutral-700 cursor-pointer"
+                            >
+                              Reset Search &amp; Filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -4521,6 +4729,23 @@ export default function App() {
               </div>
             </div>
           </section>
+        )}
+
+        {/* ================= TAB 6: ALCOHOL INVENTORY & RUNNING COGS ================= */}
+        {activeTab === 'inventory' && (
+          <AlcoholInventoryCogs
+            items={inventoryItems}
+            onUpdateItems={handleUpdateInventoryItems}
+            onResetDefaults={handleResetInventoryDefaults}
+            purchases={inventoryPurchases}
+            onUpdatePurchases={handleUpdateInventoryPurchases}
+            openingStockValue={inventoryOpeningValue}
+            onUpdateOpeningStockValue={handleUpdateInventoryOpeningValue}
+            periodBarSales={inventoryPeriodSales}
+            onUpdatePeriodBarSales={handleUpdateInventoryPeriodSales}
+            simCogsRate={simCogsRate}
+            onApplyCogsToSimulator={handleApplyCogsToSimulator}
+          />
         )}
       </main>
 
