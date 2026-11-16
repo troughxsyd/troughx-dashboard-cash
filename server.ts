@@ -1,5 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
@@ -18,6 +20,21 @@ app.use(express.json({ limit: '10mb' }));
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Downloadable ZIP archive of standalone PHP 8 + MySQL 8 branch
+app.get('/troughx-php-app.zip', (req, res) => {
+  const publicZip = path.resolve(__dirname, 'public', 'troughx-php-app.zip');
+  const distZip = path.resolve(__dirname, 'dist', 'troughx-php-app.zip');
+  const zipPath = fs.existsSync(publicZip) ? publicZip : distZip;
+
+  if (!fs.existsSync(zipPath)) {
+    return res.status(404).json({ error: 'PHP branch ZIP archive not found.' });
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="troughx-php-app.zip"');
+  return res.sendFile(zipPath);
 });
 
 // Gemini AI Budget Analysis endpoint
@@ -99,10 +116,17 @@ Provide:
 });
 
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        ...(process.env.DISABLE_HMR === 'true'
+          ? { ws: false, hmr: false }
+          : { ws: { server: httpServer } }),
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -113,7 +137,7 @@ async function startServer() {
     });
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  httpServer.listen(port, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${port}`);
   });
 }

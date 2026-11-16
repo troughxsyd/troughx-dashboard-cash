@@ -4756,11 +4756,19 @@ export default function App() {
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>Trough X Operating System &bull; 273 Crown St, Surry Hills NSW 2010</span>
           </div>
-          <div>
+          <div className="flex items-center gap-3 flex-wrap justify-center">
             <span>
               Flat-Rate IFA Roster Model &bull; BOOT Compliant &bull; Internal Management
               Confidential
             </span>
+            <a
+              href="/troughx-php-app.zip"
+              download="troughx-php-app.zip"
+              className="px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-trough-yellow border border-neutral-700 text-[11px] font-medium inline-flex items-center gap-1.5 transition"
+            >
+              <i className="fa-solid fa-file-zipper"></i>
+              <span>PHP/MySQL (.zip)</span>
+            </a>
           </div>
         </div>
       </footer>
